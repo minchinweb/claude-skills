@@ -85,11 +85,12 @@ def test_tooling_kind_skips_packaging_rules(tooling_repo: Path) -> None:
     assert {"F3", "D3", "A1"} <= found
 
 
-def test_tooling_kind_does_not_need_changelog_or_invoke_yaml(
+def test_tooling_kind_needs_a_changelog_but_not_invoke_yaml(
     tooling_repo: Path,
 ) -> None:
     msgs = messages(audit(tooling_repo), "L4")
-    assert not any("CHANGELOG" in m or "invoke.yaml" in m for m in msgs)
+    assert any("CHANGELOG" in m for m in msgs)
+    assert not any("invoke.yaml" in m for m in msgs)
 
 
 def test_library_without_marker_needs_requires_python(tmp_path: Path) -> None:

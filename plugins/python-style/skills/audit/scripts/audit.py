@@ -221,7 +221,7 @@ def main() -> int:
             add("L4", f"{present[low]} should be {canon}")
     if not any(n.lower().startswith("readme") for n in names):
         add("L4", "no README")
-    if packaged and not any(n.lower().startswith("changelog") for n in names):
+    if not any(n.lower().startswith("changelog") for n in names):
         add("L4", "no CHANGELOG.rst")
     if not any(n.lower().startswith(("license", "licence")) for n in names):
         add("L4", "no LICENSE.txt")
