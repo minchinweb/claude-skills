@@ -16,6 +16,7 @@ import json
 import os
 from pathlib import Path
 import re
+import subprocess
 import sys
 import tomllib
 
@@ -241,6 +242,15 @@ def main() -> int:
     dependabot = ("dependabot.yaml", "dependabot.yml")
     if not any((root / ".github" / n).exists() for n in dependabot):
         add("A4", "no .github/dependabot.yaml", "check")
+
+    # --- L6: release tags ------------------------------------------------
+    tags = subprocess.run(
+        ["git", "-C", str(root), "tag"], capture_output=True, text=True, check=False
+    ).stdout.split()
+    bad_tags = [t for t in tags if not re.fullmatch(r"v\d+(\.\d+)*", t)]
+    if bad_tags:
+        shown = ", ".join(bad_tags[:5]) + (" ..." if len(bad_tags) > 5 else "")
+        add("L6", f"{len(bad_tags)} tag(s) not in vX.Y.Z form: {shown}", "check")
 
     # --- tasks.py --------------------------------------------------------
     tp = root / "tasks.py"

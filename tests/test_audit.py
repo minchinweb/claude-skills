@@ -98,6 +98,18 @@ def test_library_without_marker_needs_requires_python(tmp_path: Path) -> None:
     assert "P3" in rules(audit(tmp_path))
 
 
+def test_non_v_tags_are_flagged(tooling_repo: Path) -> None:
+    subprocess.run(["git", "init", "-q", str(tooling_repo)], check=True)
+    git = ["git", "-C", str(tooling_repo), "-c", "user.name=t", "-c", "user.email=t@t"]
+    subprocess.run([*git, "commit", "-q", "--allow-empty", "-m", "x"], check=True)
+    for tag in ("1.0.0", "v2.0.0"):
+        subprocess.run([*git, "tag", tag], check=True)
+    flagged = messages(audit(tooling_repo), "L6")
+    assert len(flagged) == 1
+    assert "1.0.0" in flagged[0]
+    assert "v2.0.0" not in flagged[0]
+
+
 def test_survey_writes_a_report_and_skips_forks(tmp_path: Path) -> None:
     root = tmp_path / "root"
     for name, remote in (
