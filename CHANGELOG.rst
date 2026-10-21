@@ -5,3 +5,4 @@ Changelog
   the style guide bundled as a git submodule.
 - :support:`-` follow the style guide's "tooling" kind: ruff, ``uv.lock``,
   ``tasks.py``, CI, and tests for ``audit.py`` and ``survey.py``.
+- :release:`1.0.0 <2026-10-21>`
