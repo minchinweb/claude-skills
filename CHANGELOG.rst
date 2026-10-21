@@ -1,6 +1,8 @@
 Changelog
 =========
 
+- :feature:`-` ``audit`` accepts tasks imported from
+  ``minchin.releaser.dev_tasks`` as satisfying the task rules (D5, F8).
 - :feature:`-` ``audit`` accepts the changelog at ``CHANGELOG.rst`` or
   ``docs/changelog.rst`` (one copy only), and checks that ``invoke.yaml``
   points at it (rule L5).

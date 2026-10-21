@@ -276,12 +276,14 @@ def main() -> int:
     if tp.exists():
         t = tp.read_text(encoding="utf8", errors="ignore")
         # tasks pulled in with `from x import *` can't be seen from here
+        # the shared tasks (minchin.releaser.dev_tasks) satisfy D5 and F8 as-is
+        shared = "minchin.releaser.dev_tasks" in t
         lvl = "check" if re.search(r"import \*", t) else "fix"
-        for task in ("update", "upgrade", "lint", "test", "check"):
+        for task in () if shared else ("update", "upgrade", "lint", "test", "check"):
             if not re.search(rf"def {task}\(", t):
                 rule = "D5" if task in ("update", "upgrade") else "F8"
                 add(rule, f"tasks.py has no {task!r} task", lvl)
-        if not re.search(r"name=\"format\"|def format\(", t):
+        if not shared and not re.search(r"name=\"format\"|def format\(", t):
             add("F8", "tasks.py has no 'format' task", lvl)
 
     # --- C: code (informational) ----------------------------------------

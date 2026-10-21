@@ -117,6 +117,15 @@ def test_changelog_in_both_places_and_stale_invoke_path(tooling_repo: Path) -> N
     assert "nope.rst does not exist" in found
 
 
+def test_shared_dev_tasks_satisfy_the_task_rules(tooling_repo: Path) -> None:
+    (tooling_repo / "tasks.py").write_text(
+        "from minchin.releaser.dev_tasks import *  # noqa: F403\n", encoding="utf8"
+    )
+    found = audit(tooling_repo)
+    assert rules(found).isdisjoint({"D5", "F8"})
+    assert rules(found, "check").isdisjoint({"D5", "F8"})
+
+
 def test_non_v_tags_are_flagged(tooling_repo: Path) -> None:
     subprocess.run(["git", "init", "-q", str(tooling_repo)], check=True)
     git = ["git", "-C", str(tooling_repo), "-c", "user.name=t", "-c", "user.email=t@t"]
