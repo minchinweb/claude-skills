@@ -222,8 +222,27 @@ def main() -> int:
             add("L4", f"{present[low]} should be {canon}")
     if not any(n.lower().startswith("readme") for n in names):
         add("L4", "no README")
-    if not any(n.lower().startswith("changelog") for n in names):
-        add("L4", "no CHANGELOG.rst")
+    root_cl = [n for n in names if n.lower().startswith("changelog")]
+    docs_cl = [
+        p.name
+        for p in (root / "docs").glob("*")
+        if p.name.lower().startswith("changelog") and p.suffix == ".rst"
+    ]
+    if not root_cl and not docs_cl:
+        add("L5", "no changelog (CHANGELOG.rst, or docs/changelog.rst)")
+    if root_cl and docs_cl:
+        add("L5", f"changelog in both {root_cl[0]} and docs/{docs_cl[0]}; keep one")
+    for n in docs_cl:
+        if n != "changelog.rst":
+            add("L5", f"docs/{n} should be docs/changelog.rst")
+    inv = root / "invoke.yaml"
+    m = (
+        re.search(r"changelog:\s*(\S+)", inv.read_text("utf8"))
+        if inv.exists()
+        else None
+    )
+    if m and not (root / m.group(1)).exists():
+        add("L5", f"invoke.yaml changelog: {m.group(1)} does not exist")
     if not any(n.lower().startswith(("license", "licence")) for n in names):
         add("L4", "no LICENSE.txt")
     for n in REQUIRED_FILES:

@@ -88,14 +88,33 @@ def test_tooling_kind_skips_packaging_rules(tooling_repo: Path) -> None:
 def test_tooling_kind_needs_a_changelog_but_not_invoke_yaml(
     tooling_repo: Path,
 ) -> None:
-    msgs = messages(audit(tooling_repo), "L4")
-    assert any("CHANGELOG" in m for m in msgs)
-    assert not any("invoke.yaml" in m for m in msgs)
+    findings = audit(tooling_repo)
+    assert any("changelog" in m for m in messages(findings, "L5"))
+    assert not any("invoke.yaml" in m for m in messages(findings, "L4"))
 
 
 def test_library_without_marker_needs_requires_python(tmp_path: Path) -> None:
     (tmp_path / "pyproject.toml").write_text('[project]\nname = "x"\n', encoding="utf8")
     assert "P3" in rules(audit(tmp_path))
+
+
+def test_changelog_may_live_in_docs(tooling_repo: Path) -> None:
+    (tooling_repo / "docs").mkdir()
+    (tooling_repo / "docs" / "changelog.rst").write_text("x", encoding="utf8")
+    assert messages(audit(tooling_repo), "L5") == []
+
+
+def test_changelog_in_both_places_and_stale_invoke_path(tooling_repo: Path) -> None:
+    (tooling_repo / "docs").mkdir()
+    (tooling_repo / "docs" / "Changelog.rst").write_text("x", encoding="utf8")
+    (tooling_repo / "CHANGELOG.rst").write_text("x", encoding="utf8")
+    (tooling_repo / "invoke.yaml").write_text(
+        "releaser:\n  changelog: nope.rst\n", encoding="utf8"
+    )
+    found = " | ".join(messages(audit(tooling_repo), "L5"))
+    assert "keep one" in found
+    assert "should be docs/changelog.rst" in found
+    assert "nope.rst does not exist" in found
 
 
 def test_non_v_tags_are_flagged(tooling_repo: Path) -> None:
