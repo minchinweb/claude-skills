@@ -13,6 +13,7 @@ Levels: "fix" = clear deviation, "check" = might be fine, look first,
 from __future__ import annotations
 
 import json
+import os
 import re
 import sys
 import tomllib
@@ -215,12 +216,12 @@ def main() -> int:
             add("F8", "tasks.py has no 'format' task", lvl)
 
     # --- C: code (informational) ----------------------------------------
-    files = [
-        p for p in root.rglob("*.py")
-        if not any(part in SKIP_DIRS or part.endswith(".egg-info")
-                   for part in p.relative_to(root).parts)
-        and p.name not in {"setup.py", "tasks.py", "__init__.py"}
-    ]
+    files = []
+    for dirpath, dirnames, filenames in os.walk(root):
+        # prune before descending: .venv and friends can hold 100k files
+        dirnames[:] = [d for d in dirnames if d not in SKIP_DIRS and not d.endswith(".egg-info")]
+        files += [Path(dirpath) / f for f in filenames
+                  if f.endswith(".py") and f not in {"setup.py", "tasks.py", "__init__.py"}]
     no_future = [p for p in files
                  if "from __future__ import annotations" not in p.read_text(encoding="utf8", errors="ignore")]
     if files and no_future:

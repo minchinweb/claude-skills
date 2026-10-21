@@ -1,5 +1,0 @@
-{
-  "name": "python-style-audit",
-  "description": "Audit a Python project against William's Python style guide, fix deviations, or set up a new project the same way.",
-  "author": { "name": "William Minchin" }
-}

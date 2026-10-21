@@ -1,12 +1,12 @@
 {
   "name": "minchinweb-skills",
-  "description": "William Minchin's Claude Code skills",
+  "description": "MinchinWeb's Claude Code skills",
   "owner": { "name": "William Minchin" },
   "plugins": [
     {
-      "name": "python-style-audit",
-      "source": "./plugins/python-style-audit",
-      "description": "Audit and update Python projects against the python-style-guide"
+      "name": "python-style",
+      "source": "./plugins/python-style",
+      "description": "Audit and update Python projects against the python-style-guide, and survey many at once"
     }
   ]
 }

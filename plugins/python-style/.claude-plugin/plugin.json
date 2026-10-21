@@ -1,0 +1,5 @@
+{
+  "name": "python-style",
+  "description": "MinchinWeb's Python style guide: audit and fix a project (audit), or survey many projects for deviations (survey).",
+  "author": { "name": "William Minchin" }
+}

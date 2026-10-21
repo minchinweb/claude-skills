@@ -1,9 +1,9 @@
 ---
-name: python-style-audit
-description: Audit a Python project against William's Python style guide (python-style-guide/STYLE.md) and bring it into line, or set up a new Python project the same way. Use whenever the user asks to audit, lint-check, modernize, migrate or standardize a Python package or app; to move a project to uv, ruff or a pyproject.toml-only setup; to retire black, isort, flake8, pip-tools, setup.py or .requirements; to check filename casing, tests location or CI workflows; to start a new Python project or library; or says "match my style guide", even if they don't name the guide.
+name: audit
+description: Audit a Python project against MinchinWeb's Python style guide (python-style-guide/STYLE.md) and bring it into line, or set up a new Python project the same way. Use whenever the user asks to audit, lint-check, modernize, migrate or standardize a Python package or app; to move a project to uv, ruff or a pyproject.toml-only setup; to retire black, isort, flake8, pip-tools, setup.py or .requirements; to check filename casing, tests location or CI workflows; to start a new Python project or library; or says "match my style guide", even if they don't name the guide.
 ---
 
-# Python style audit
+# Python style audit (`/python-style:audit`)
 
 The source of truth is `${CLAUDE_PLUGIN_ROOT}/python-style-guide/STYLE.md`
 (a git submodule of the guide repo), with starting files in
@@ -12,8 +12,8 @@ restate the rules, because copies drift. Read `STYLE.md` at the start of every
 run so you work from the current rules. If that folder is empty (the submodule
 wasn't fetched), say so and stop: clone
 `https://github.com/minchinweb/python-style-guide` and use that clone instead.
-A local-only `DEVIATIONS.md` may sit beside `STYLE.md`; use it if present, but
-never rely on it.
+For a many-project overview, use the `survey` skill instead; it writes a
+local-only `DEVIATIONS.md` that is never part of this plugin.
 
 ## Audit one project
 
