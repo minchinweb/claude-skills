@@ -40,3 +40,14 @@ git add plugins/python-style/python-style-guide
 ```
 
 Check with `claude plugin validate .`.
+
+## Development
+
+This is a *tooling* repo in the guide's terms (`kind = "tooling"`): scripts and
+plugins, never built as a package.
+
+```
+uv sync
+uv run invoke format   # ruff + taplo, applies fixes
+uv run invoke check    # lint, format check, pyproject check, tests
+```

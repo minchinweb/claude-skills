@@ -31,9 +31,14 @@ local-only `DEVIATIONS.md` that is never part of this plugin.
    changes nothing. It cannot judge everything, so also skim the code for the
    judgement rules (C1-C7: type hints, Google docstrings, pathlib, logging,
    pytest style).
-3. **Decide library or app.** A library is published to PyPI; an app is
-   deployed. Several rules differ (`.python-version`, README format,
-   single-version CI). If it's unclear, ask.
+3. **Decide the kind: library, app or tooling.** A library is published to
+   PyPI; an app is deployed; a tooling repo (scripts, plugins) is never built
+   as a package (STYLE.md section 8). The script reads
+   `[tool.python-style] kind = "tooling"` from `pyproject.toml` and treats
+   everything else as a library, so if a repo is really an app or tooling,
+   say so in the report and propose adding the marker. Several rules differ by
+   kind (`.python-version`, README format, packaging, single-version CI). If
+   it's unclear, ask.
 4. **Report** before changing anything: group by rule, say how many are `fix`
    versus `check`, and note anything that looks deliberate. Offer a plan.
    Do not start fixing until the user agrees, because a migration touches

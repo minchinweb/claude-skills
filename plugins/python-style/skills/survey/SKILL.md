@@ -1,6 +1,6 @@
 ---
 name: survey
-description: Survey many local Python projects against William's Python style guide and write a local-only DEVIATIONS.md summary (which projects break which STYLE.md rules). Use when the user wants an overview of all their projects, a migration plan or backlog across repos, "which of my packages still use black/isort/pip-tools/setup.py", or asks to regenerate or refresh DEVIATIONS.md. For fixing one project, use the audit skill instead.
+description: Survey many local Python projects against MinchinWeb's Python style guide and write a local-only DEVIATIONS.md summary (which projects break which STYLE.md rules). Use when the user wants an overview of all their projects, a migration plan or backlog across repos, "which of my packages still use black/isort/pip-tools/setup.py", or asks to regenerate or refresh DEVIATIONS.md. For fixing one project, use the audit skill instead.
 ---
 
 # Python style survey (`/python-style:survey`)

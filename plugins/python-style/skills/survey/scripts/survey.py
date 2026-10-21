@@ -14,13 +14,13 @@ OUT_FILE should not be inside a published repo.
 from __future__ import annotations
 
 import argparse
+from collections import defaultdict
+from datetime import date
 import json
+from pathlib import Path
 import re
 import subprocess
 import sys
-from collections import defaultdict
-from datetime import date
-from pathlib import Path
 
 AUDIT = Path(__file__).resolve().parents[2] / "audit" / "scripts" / "audit.py"
 PY_MARKERS = ("pyproject.toml", "setup.py", "setup.cfg")
@@ -30,7 +30,9 @@ def origin_owner(repo: Path) -> str | None:
     """The GitHub owner of ``origin``, or None if there is no remote."""
     r = subprocess.run(
         ["git", "-C", str(repo), "remote", "get-url", "origin"],
-        capture_output=True, text=True,
+        capture_output=True,
+        text=True,
+        check=False,
     )
     if r.returncode != 0:
         return None
@@ -57,10 +59,13 @@ def main() -> int:
             continue
         r = subprocess.run(
             [sys.executable, str(AUDIT), str(d), "--json"],
-            capture_output=True, text=True,
+            capture_output=True,
+            text=True,
+            check=False,
         )
         if r.returncode != 0:
-            print(f"audit failed for {d.name}: {r.stderr.strip()[-200:]}", file=sys.stderr)
+            err = r.stderr.strip()[-200:]
+            print(f"audit failed for {d.name}: {err}", file=sys.stderr)
             continue
         results[d.name] = json.loads(r.stdout)
 
@@ -77,7 +82,8 @@ def main() -> int:
         "",
         f"{len(results)} projects audited"
         + (f"; {len(skipped)} skipped as forks/upstream" if skipped else "")
-        + ". Rule numbers are from `STYLE.md`; only clear deviations (`fix`) are counted.",
+        + ". Rule numbers are from `STYLE.md`; only clear deviations (`fix`) "
+        "are counted.",
         "",
         "## By rule",
         "",
@@ -88,11 +94,15 @@ def main() -> int:
         repos = by_rule[rule]
         lines.append(f"| {rule} | {len(repos)} | {', '.join(repos)} |")
     lines += ["", "## By project", ""]
-    for repo, fs in sorted(results.items(), key=lambda kv: -sum(f["level"] == "fix" for f in kv[1])):
+
+    def n_fix(item: tuple[str, list[dict]]) -> int:
+        return sum(f["level"] == "fix" for f in item[1])
+
+    for repo, fs in sorted(results.items(), key=lambda kv: -n_fix(kv)):
         fix = [f for f in fs if f["level"] == "fix"]
         check = sum(f["level"] == "check" for f in fs)
-        rules = sorted({f["rule"] for f in fix})
-        lines.append(f"- **{repo}**: {len(fix)} fix, {check} check -- {' '.join(rules) or 'clean'}")
+        rules = " ".join(sorted({f["rule"] for f in fix})) or "clean"
+        lines.append(f"- **{repo}**: {len(fix)} fix, {check} check -- {rules}")
     if skipped:
         lines += ["", "## Skipped (forks / upstream)", "", ", ".join(skipped)]
     a.out.parent.mkdir(parents=True, exist_ok=True)
