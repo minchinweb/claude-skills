@@ -5,9 +5,6 @@ William Minchin's Claude Code skills, as a plugin marketplace
 
 ## Install (any machine)
 
-Git needs access to the (private) repos, e.g. `gh auth login` then
-`gh auth setup-git`.
-
 ```
 /plugin marketplace add minchinweb/claude-skills
 /plugin install python-style@minchinweb-skills
