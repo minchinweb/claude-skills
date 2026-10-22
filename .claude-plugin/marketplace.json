@@ -1,12 +1,19 @@
 {
   "name": "minchinweb-skills",
   "description": "MinchinWeb's Claude Code skills",
-  "owner": { "name": "William Minchin" },
+  "owner": {
+    "name": "William Minchin"
+  },
   "plugins": [
     {
       "name": "python-style",
       "source": "./plugins/python-style",
       "description": "Audit and update Python projects against the python-style-guide, and survey many at once"
+    },
+    {
+      "name": "statusline",
+      "source": "./plugins/statusline",
+      "description": "Set up Claude Code the way I like it: install my status line"
     }
   ]
 }

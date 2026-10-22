@@ -1,0 +1,5 @@
+{
+  "name": "statusline",
+  "description": "MinchinWeb's Claude Code status line: install it on a machine with /statusline:install.",
+  "author": { "name": "William Minchin" }
+}

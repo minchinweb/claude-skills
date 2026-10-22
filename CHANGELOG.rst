@@ -1,6 +1,11 @@
 Changelog
 =========
 
+- :feature:`-` ``statusline`` plugin: ``install`` skill installs the
+  status line (directory shortened to fit the terminal) and warns before
+  replacing a different one. A ``SessionStart`` hook refreshes an unmodified
+  installed copy when the plugin updates.
+
 - :feature:`-` ``audit`` accepts tasks imported from
   ``minchin.releaser.dev_tasks`` as satisfying the task rules (D5, F8).
 - :feature:`-` ``audit`` accepts the changelog at ``CHANGELOG.rst`` or

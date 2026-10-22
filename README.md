@@ -8,9 +8,24 @@ William Minchin's Claude Code skills, as a plugin marketplace
 ```
 /plugin marketplace add minchinweb/claude-skills
 /plugin install python-style@minchinweb-skills
+/plugin install statusline@minchinweb-skills
 ```
 
-Update with `/plugin marketplace update minchinweb-skills`.
+Update by hand with `/plugin marketplace update minchinweb-skills`.
+
+### Auto-update
+
+Third-party marketplaces don't update themselves by default. To turn it on, on
+each machine:
+
+1. Run `/plugin` and open the **Marketplaces** tab.
+2. Select `minchinweb-skills`.
+3. Choose **Enable auto-update**.
+
+Claude Code then refreshes the marketplace and its plugins at startup. The
+`statusline` plugin also refreshes your installed `~/.claude/statusline.sh` at
+the start of each session, unless you've edited it (then it warns instead; run
+`/statusline:install` to review).
 
 ## Plugins
 
@@ -26,6 +41,18 @@ folder) with two skills:
   summary to `DEVIATIONS.md`. That file names your local projects, so it is
   written to this machine only (default `${CLAUDE_PLUGIN_DATA}`), never into a
   repo.
+
+### `claude-setup`
+
+- `/statusline:install` -- install my status line on a new machine.
+  Copies `statusline.sh` to `~/.claude/` and sets `statusLine` in
+  `settings.json`. A machine with no status line configured installs without
+  asking; a different existing one is left alone until you confirm, and the old
+  one is saved.
+
+**Keep it in sync:** the copy in
+`plugins/statusline/skills/install/statusline.sh` is the master.
+Whenever you change your status line, update that file too and push.
 
 ## Working on it
 
