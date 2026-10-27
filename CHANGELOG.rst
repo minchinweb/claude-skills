@@ -1,6 +1,9 @@
 Changelog
 =========
 
+- :feature:`-` ``git`` plugin: ``commit`` skill writes a 🤖-prefixed message
+  and commits the staged changes, or with nothing staged, only what Claude
+  changed this session.
 - :feature:`-` ``statusline`` plugin: ``install`` skill installs the
   status line (directory shortened to fit the terminal) and warns before
   replacing a different one. A ``SessionStart`` hook refreshes an unmodified

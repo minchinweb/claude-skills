@@ -1,0 +1,5 @@
+{
+  "name": "git",
+  "description": "MinchinWeb's git helpers: write a commit message for the current changes and commit them with /git:commit.",
+  "author": { "name": "William Minchin" }
+}

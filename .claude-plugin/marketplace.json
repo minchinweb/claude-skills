@@ -14,6 +14,11 @@
       "name": "statusline",
       "source": "./plugins/statusline",
       "description": "Set up Claude Code the way I like it: install my status line"
+    },
+    {
+      "name": "git",
+      "source": "./plugins/git",
+      "description": "Write a commit message for the current changes and commit them, like Cursor's /commit"
     }
   ]
 }

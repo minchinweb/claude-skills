@@ -9,6 +9,7 @@ William Minchin's Claude Code skills, as a plugin marketplace
 /plugin marketplace add minchinweb/claude-skills
 /plugin install python-style@minchinweb-skills
 /plugin install statusline@minchinweb-skills
+/plugin install git@minchinweb-skills
 ```
 
 Update by hand with `/plugin marketplace update minchinweb-skills`.
@@ -42,7 +43,7 @@ folder) with two skills:
   written to this machine only (default `${CLAUDE_PLUGIN_DATA}`), never into a
   repo.
 
-### `claude-setup`
+### `statusline`
 
 - `/statusline:install` -- install my status line on a new machine.
   Copies `statusline.sh` to `~/.claude/` and sets `statusLine` in
@@ -53,6 +54,13 @@ folder) with two skills:
 **Keep it in sync:** the copy in
 `plugins/statusline/skills/install/statusline.sh` is the master.
 Whenever you change your status line, update that file too and push.
+
+### `git`
+
+- `/git:commit` -- commit with a generated message, like Cursor's `/commit`.
+  Commits what's staged; with nothing staged, only the files (and hunks) Claude
+  changed this session. The subject always starts with 🤖 and otherwise follows
+  the repo's recent commits. Never pushes.
 
 ## Working on it
 
