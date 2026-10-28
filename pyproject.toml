@@ -11,7 +11,7 @@ dependencies = []
 dev = [
   "invoke >= 2.2",
   "pytest >= 8",
-  "ruff >= 0.14",
+  "ruff>=0.17.2",
   "taplo >= 0.9",               # formats pyproject.toml
   "validate-pyproject >= 0.24", # checks pyproject.toml against the schemas
 ]
