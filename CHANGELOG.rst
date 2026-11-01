@@ -1,6 +1,17 @@
 Changelog
 =========
 
+- :feature:`-` ``audit`` checks rule H11 (Home Assistant projects need an
+  "Install to my Home Assistant" ``hacs_repository`` link in ``README.md``).
+- :support:`-` update the bundled style guide to 5c539f2: H11, the copyright
+  and ``__future__`` rules, and ``SIM108`` ignored.
+- :feature:`-` ``audit`` understands ``kind = "homeassistant"`` (STYLE.md
+  section 9, H rules): Home Assistant custom integrations skip the packaging
+  rules and are checked for the ``custom_components/<domain>/`` layout,
+  ``manifest.json`` version, ``hacs.json``, test setup and HACS/hassfest CI.
+- :bug:`-` ``audit`` accepts ``minchin.tasks`` (imported in ``tasks.py`` and
+  as a dependency, which brings taplo and validate-pyproject) for D5, F8 and
+  F9, matching the current templates.
 - :feature:`-` ``git`` plugin: ``commit`` skill writes a 🤖-prefixed message
   and commits the staged changes, or with nothing staged, only what Claude
   changed this session.

@@ -31,12 +31,17 @@ local-only `DEVIATIONS.md` that is never part of this plugin.
    changes nothing. It cannot judge everything, so also skim the code for the
    judgement rules (C1-C7: type hints, Google docstrings, pathlib, logging,
    pytest style).
-3. **Decide the kind: library, app or tooling.** A library is published to
-   PyPI; an app is deployed; a tooling repo (scripts, plugins) is never built
-   as a package (STYLE.md section 8). The script reads
-   `[tool.python-style] kind = "tooling"` from `pyproject.toml` and treats
-   everything else as a library, so if a repo is really an app or tooling,
-   say so in the report and propose adding the marker. Several rules differ by
+3. **Decide the kind: library, app, tooling or Home Assistant
+   integration.** A library is published to PyPI; an app is deployed; a
+   tooling repo (scripts, plugins) is never built as a package (STYLE.md
+   section 8); a Home Assistant integration (`custom_components/<domain>/`,
+   installed through HACS) isn't either, and adds the H rules (section 9).
+   The script reads `[tool.python-style] kind = "tooling"` or
+   `kind = "homeassistant"` from `pyproject.toml` and treats everything else
+   as a library, so if a repo is really an app, tooling or an integration,
+   say so in the report and propose adding the marker. For an integration,
+   start from `templates/pyproject-homeassistant.toml` and
+   `templates/homeassistant/`. Several rules differ by
    kind (`.python-version`, README format, packaging, single-version CI). If
    it's unclear, ask.
 4. **Report** before changing anything: group by rule, say how many are `fix`
