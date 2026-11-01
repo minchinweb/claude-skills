@@ -66,6 +66,71 @@ SKIP_DIRS = {
 }
 
 
+def check_homeassistant(root, pp, project, tool, wf, add) -> None:
+    """STYLE.md section 9 (H1-H10): a HACS custom integration."""
+    domains = [
+        p
+        for p in (root / "custom_components").glob("*")
+        if p.is_dir() and not p.name.startswith((".", "__"))
+    ]
+    if len(domains) != 1:
+        add("H2", f"want one custom_components/<domain>/, found {len(domains)}")
+    for domain in domains:
+        rel = f"custom_components/{domain.name}"
+        for need in ("manifest.json", "__init__.py", "translations/en.json"):
+            if not (domain / need).exists():
+                add("H2", f"{rel}/{need} missing")
+        manifest_path = domain / "manifest.json"
+        if manifest_path.exists():
+            try:
+                manifest = json.loads(manifest_path.read_text(encoding="utf8"))
+            except json.JSONDecodeError as e:
+                add("H2", f"{rel}/manifest.json does not parse: {e}")
+            else:
+                if "version" not in manifest:
+                    add("H3", f"{rel}/manifest.json has no 'version'")
+        if (domain / "const.py").exists():
+            add("H2", f"{rel}/const.py should be constants.py", "check")
+        if not (domain / "strings.json").exists():
+            add("H8", f"{rel}/strings.json missing", "check")
+    if not (root / "hacs.json").exists():
+        add("H2", "hacs.json missing")
+    first_party = (
+        tool.get("ruff", {}).get("lint", {}).get("isort", {}).get("known-first-party")
+    )
+    if "custom_components" not in (first_party or []):
+        add("H2", "isort known-first-party lacks 'custom_components'")
+    if project.get("version") != "0":
+        add("H3", "pyproject version should be '0'; manifest.json has the version")
+    if (root / "invoke.yaml").exists():
+        add("H3", "invoke.yaml present; minchin.releaser can't bump manifest.json")
+    dev = " ".join(
+        d
+        for grp in pp.get("dependency-groups", {}).values()
+        for d in grp
+        if isinstance(d, str)
+    )
+    if "pytest-homeassistant-custom-component" not in dev:
+        add("H5", "pytest-homeassistant-custom-component not in a dependency group")
+    if re.search(r"(?<![-\w])homeassistant\s*[<>=!~ ]", dev + " "):
+        add("H5", "direct 'homeassistant' dependency; the pytest plugin pins it")
+    conftest = root / "tests" / "conftest.py"
+    if not conftest.exists() or "enable_custom_integrations" not in (
+        conftest.read_text(encoding="utf8", errors="ignore")
+    ):
+        add("H6", "tests/conftest.py doesn't use enable_custom_integrations", "check")
+    if tool.get("uv", {}).get("package") is not False:
+        add("H1", "[tool.uv] package should be false")
+    validate = " ".join(
+        p.read_text(encoding="utf8", errors="ignore") for p in wf.glob("*.y*ml")
+    )
+    for action in ("hacs/action", "hassfest"):
+        if action not in validate:
+            add("H9", f"no workflow runs {action}")
+    if (root / "README.rst").exists() and not (root / "README.md").exists():
+        add("H10", "README.rst should be README.md (HACS renders the README)")
+
+
 def main() -> int:
     root = Path(sys.argv[1]).resolve()
     findings: list[dict] = []
@@ -84,9 +149,11 @@ def main() -> int:
         except tomllib.TOMLDecodeError as e:
             add("P1", f"pyproject.toml does not parse: {e}")
     project, tool = pp.get("project", {}), pp.get("tool", {})
-    # STYLE.md section 8: tooling repos (scripts, plugins) aren't packages
+    # STYLE.md sections 8 and 9: tooling repos (scripts, plugins) and Home
+    # Assistant integrations aren't packages
     kind = tool.get("python-style", {}).get("kind", "library")
-    packaged = kind != "tooling"
+    homeassistant = kind == "homeassistant"
+    packaged = kind not in ("tooling", "homeassistant")
 
     # --- F: ruff ---------------------------------------------------------
     for t in ("black", "isort", "flake8"):
@@ -133,7 +200,11 @@ def main() -> int:
         if ruff.get("force-exclude") is not True:
             add("F6", "force-exclude is not true")
     joined = " ".join(all_deps)
+    # minchin.tasks depends on taplo and validate-pyproject
+    shared_tasks_dep = re.search(r"minchin[.-]tasks", joined, re.IGNORECASE)
     for need in ("ruff", "taplo", "validate-pyproject", "invoke", "pytest"):
+        if need in ("taplo", "validate-pyproject") and shared_tasks_dep:
+            continue
         if need not in joined:
             add(
                 "F9" if need in ("taplo", "validate-pyproject") else "D2",
@@ -276,8 +347,9 @@ def main() -> int:
     if tp.exists():
         t = tp.read_text(encoding="utf8", errors="ignore")
         # tasks pulled in with `from x import *` can't be seen from here
-        # the shared tasks (minchin.releaser.dev_tasks) satisfy D5 and F8 as-is
-        shared = "minchin.releaser.dev_tasks" in t
+        # the shared tasks (minchin.tasks, or the older
+        # minchin.releaser.dev_tasks) satisfy D5 and F8 as-is
+        shared = re.search(r"from minchin\.(tasks|releaser\.dev_tasks) import", t)
         lvl = "check" if re.search(r"import \*", t) else "fix"
         for task in () if shared else ("update", "upgrade", "lint", "test", "check"):
             if not re.search(rf"def {task}\(", t):
@@ -285,6 +357,10 @@ def main() -> int:
                 add(rule, f"tasks.py has no {task!r} task", lvl)
         if not shared and not re.search(r"name=\"format\"|def format\(", t):
             add("F8", "tasks.py has no 'format' task", lvl)
+
+    # --- H: Home Assistant integrations ---------------------------------
+    if homeassistant:
+        check_homeassistant(root, pp, project, tool, wf, add)
 
     # --- C: code (informational) ----------------------------------------
     files = []

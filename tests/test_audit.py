@@ -126,6 +126,109 @@ def test_shared_dev_tasks_satisfy_the_task_rules(tooling_repo: Path) -> None:
     assert rules(found, "check").isdisjoint({"D5", "F8"})
 
 
+def test_minchin_tasks_satisfy_the_task_and_toml_rules(tooling_repo: Path) -> None:
+    (tooling_repo / "pyproject.toml").write_text(
+        '[project]\nname = "x"\nversion = "0"\nrequires-python = ">=3.11"\n'
+        '[dependency-groups]\ndev = ["invoke >= 2.2", "minchin.tasks >= 1.2"]\n'
+        '[tool.python-style]\nkind = "tooling"\n',
+        encoding="utf8",
+    )
+    (tooling_repo / "tasks.py").write_text(
+        "from minchin.tasks import check, format_code, lint, test, update, upgrade\n",
+        encoding="utf8",
+    )
+    found = audit(tooling_repo)
+    assert rules(found).isdisjoint({"D5", "F8", "F9"})
+
+
+HA_PYPROJECT = """\
+[project]
+name = "ha-example"
+version = "0"
+requires-python = ">=3.14.2"
+dependencies = []
+
+[dependency-groups]
+dev = [
+  "invoke >= 2.2",
+  "minchin.tasks >= 1.2",
+  "pytest-homeassistant-custom-component >= 0.13",
+  "ruff >= 0.14",
+]
+
+[tool.python-style]
+kind = "homeassistant"
+
+[tool.uv]
+package = false
+
+[tool.ruff.lint.isort]
+known-first-party = ["custom_components"]
+"""
+
+
+@pytest.fixture
+def ha_repo(tmp_path: Path) -> Path:
+    """A Home Assistant custom integration laid out as STYLE.md section 9 says."""
+    (tmp_path / "pyproject.toml").write_text(HA_PYPROJECT, encoding="utf8")
+    domain = tmp_path / "custom_components" / "example"
+    (domain / "translations").mkdir(parents=True)
+    (domain / "__init__.py").write_text("", encoding="utf8")
+    (domain / "manifest.json").write_text(
+        '{"domain": "example", "version": "1.0.0"}', encoding="utf8"
+    )
+    (domain / "strings.json").write_text("{}", encoding="utf8")
+    (domain / "translations" / "en.json").write_text("{}", encoding="utf8")
+    (tmp_path / "hacs.json").write_text('{"name": "Example"}', encoding="utf8")
+    (tmp_path / "tests").mkdir()
+    (tmp_path / "tests" / "conftest.py").write_text(
+        "def auto(enable_custom_integrations): ...\n", encoding="utf8"
+    )
+    workflows = tmp_path / ".github" / "workflows"
+    workflows.mkdir(parents=True)
+    (workflows / "validate.yml").write_text(
+        "uses: hacs/action@main\nuses: home-assistant/actions/hassfest@master\n",
+        encoding="utf8",
+    )
+    (tmp_path / "README.md").write_text("x", encoding="utf8")
+    return tmp_path
+
+
+def test_homeassistant_kind_passes_section_9(ha_repo: Path) -> None:
+    findings = audit(ha_repo)
+    assert not [f for f in findings if f["rule"].startswith("H")]
+    # not a package: top-level tests/ and no packaging rules
+    assert rules(findings).isdisjoint({"L3", "P2", "P4", "P5"})
+    assert not [m for m in messages(findings, "L4") if "invoke.yaml" in m]
+    assert rules(findings).isdisjoint({"F9"})  # via minchin.tasks
+
+
+def test_homeassistant_kind_reports_deviations(ha_repo: Path) -> None:
+    domain = ha_repo / "custom_components" / "example"
+    (domain / "manifest.json").write_text('{"domain": "example"}', encoding="utf8")
+    (domain / "translations" / "en.json").unlink()
+    (ha_repo / "hacs.json").unlink()
+    (ha_repo / "invoke.yaml").write_text("releaser: {}\n", encoding="utf8")
+    (ha_repo / ".github" / "workflows" / "validate.yml").unlink()
+    (ha_repo / "pyproject.toml").write_text(
+        HA_PYPROJECT.replace('version = "0"', 'version = "1.0.0"').replace(
+            '"ruff >= 0.14",', '"ruff >= 0.14",\n  "homeassistant >= 2025.1",'
+        ),
+        encoding="utf8",
+    )
+    found = " | ".join(
+        f"{f['rule']}: {f['msg']}" for f in audit(ha_repo) if f["rule"][0] == "H"
+    )
+    assert "H2: custom_components/example/translations/en.json missing" in found
+    assert "H2: hacs.json missing" in found
+    assert "H3: custom_components/example/manifest.json has no 'version'" in found
+    assert "H3: pyproject version should be '0'" in found
+    assert "H3: invoke.yaml present" in found
+    assert "H5: direct 'homeassistant' dependency" in found
+    assert "H9: no workflow runs hacs/action" in found
+    assert "H9: no workflow runs hassfest" in found
+
+
 def test_non_v_tags_are_flagged(tooling_repo: Path) -> None:
     subprocess.run(["git", "init", "-q", str(tooling_repo)], check=True)
     git = ["git", "-C", str(tooling_repo), "-c", "user.name=t", "-c", "user.email=t@t"]
