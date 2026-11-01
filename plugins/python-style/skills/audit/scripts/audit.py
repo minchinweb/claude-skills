@@ -67,7 +67,7 @@ SKIP_DIRS = {
 
 
 def check_homeassistant(root, pp, project, tool, wf, add) -> None:
-    """STYLE.md section 9 (H1-H10): a HACS custom integration."""
+    """STYLE.md section 9 (H1-H11): a HACS custom integration."""
     domains = [
         p
         for p in (root / "custom_components").glob("*")
@@ -129,6 +129,13 @@ def check_homeassistant(root, pp, project, tool, wf, add) -> None:
             add("H9", f"no workflow runs {action}")
     if (root / "README.rst").exists() and not (root / "README.md").exists():
         add("H10", "README.rst should be README.md (HACS renders the README)")
+    readme = root / "README.md"
+    if readme.exists():
+        text = readme.read_text(encoding="utf8", errors="ignore")
+        if "my.home-assistant.io/redirect/hacs_repository" not in text:
+            add("H11", "README.md has no 'Install to my Home Assistant' link")
+        elif "category=integration" not in text:
+            add("H11", "hacs_repository link lacks category=integration")
 
 
 def main() -> int:

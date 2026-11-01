@@ -1,6 +1,10 @@
 Changelog
 =========
 
+- :feature:`-` ``audit`` checks rule H11 (Home Assistant projects need an
+  "Install to my Home Assistant" ``hacs_repository`` link in ``README.md``).
+- :support:`-` update the bundled style guide to 5c539f2: H11, the copyright
+  and ``__future__`` rules, and ``SIM108`` ignored.
 - :feature:`-` ``audit`` understands ``kind = "homeassistant"`` (STYLE.md
   section 9, H rules): Home Assistant custom integrations skip the packaging
   rules and are checked for the ``custom_components/<domain>/`` layout,

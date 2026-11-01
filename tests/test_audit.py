@@ -190,7 +190,12 @@ def ha_repo(tmp_path: Path) -> Path:
         "uses: hacs/action@main\nuses: home-assistant/actions/hassfest@master\n",
         encoding="utf8",
     )
-    (tmp_path / "README.md").write_text("x", encoding="utf8")
+    (tmp_path / "README.md").write_text(
+        "[![x](https://my.home-assistant.io/badges/hacs_repository.svg)]"
+        "(https://my.home-assistant.io/redirect/hacs_repository/"
+        "?owner=o&repository=r&category=integration)\n",
+        encoding="utf8",
+    )
     return tmp_path
 
 
@@ -210,6 +215,7 @@ def test_homeassistant_kind_reports_deviations(ha_repo: Path) -> None:
     (ha_repo / "hacs.json").unlink()
     (ha_repo / "invoke.yaml").write_text("releaser: {}\n", encoding="utf8")
     (ha_repo / ".github" / "workflows" / "validate.yml").unlink()
+    (ha_repo / "README.md").write_text("x", encoding="utf8")
     (ha_repo / "pyproject.toml").write_text(
         HA_PYPROJECT.replace('version = "0"', 'version = "1.0.0"').replace(
             '"ruff >= 0.14",', '"ruff >= 0.14",\n  "homeassistant >= 2025.1",'
@@ -227,6 +233,7 @@ def test_homeassistant_kind_reports_deviations(ha_repo: Path) -> None:
     assert "H5: direct 'homeassistant' dependency" in found
     assert "H9: no workflow runs hacs/action" in found
     assert "H9: no workflow runs hassfest" in found
+    assert "H11: README.md has no" in found
 
 
 def test_non_v_tags_are_flagged(tooling_repo: Path) -> None:
