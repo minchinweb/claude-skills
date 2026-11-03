@@ -12,8 +12,8 @@ dev = [
   "invoke >= 2.2",
   "pytest >= 8",
   "ruff >= 0.14",
-  "taplo >= 0.9",               # formats pyproject.toml
-  "validate-pyproject >= 0.24", # checks pyproject.toml against the schemas
+  "taplo >= 0.9",             # formats pyproject.toml
+  "validate-pyproject>=0.27", # checks pyproject.toml against the schemas
 ]
 
 [tool.python-style]
