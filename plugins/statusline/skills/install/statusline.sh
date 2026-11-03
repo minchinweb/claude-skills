@@ -14,6 +14,14 @@ five=$(echo "$input" | sed -n 's/.*"five_hour": *{[^}]*"used_percentage": *\([0-
 week=$(echo "$input" | sed -n 's/.*"seven_day": *{[^}]*"used_percentage": *\([0-9.]*\).*/\1/p')
 ctx=$(echo "$input" | sed 's/.*"context_window": *{//; s/"remaining_percentage".*//' | sed -n 's/.*"used_percentage": *\([0-9.]*\).*/\1/p')
 
+# Remote Control: this session's record in ~/.claude/sessions has a bridgeSessionId
+sid=$(field session_id)
+rc=""
+if [ -n "$sid" ]; then
+    rec=$(grep -l "\"sessionId\":\"$sid\"" ~/.claude/sessions/*.json 2>/dev/null | head -1)
+    [ -n "$rec" ] && grep -q '"bridgeSessionId":"' "$rec" && rc=1
+fi
+
 fi=$(printf '\xef\x81\xbb')
 gi=$(printf '\xee\x82\xa0')
 
@@ -36,7 +44,9 @@ tail="$tail | $model"
 chars() { printf '%s' "$1" | wc -m | tr -d ' '; }
 
 # Space left for the directory: line width minus "<icon> " and the tail
-avail=$((width - $(chars "$fi ") - $(chars "$tail")))
+rc_len=0
+[ -n "$rc" ] && rc_len=3 # room for the " rc" shown at the far right
+avail=$((width - $(chars "$fi ") - $(chars "$tail") - rc_len))
 
 # Shorten $1 to fit within $2 chars: ~ for home, then abbreviate leading
 # components to their first letter (left to right), then ellipsize the front.
@@ -63,4 +73,12 @@ shorten_path() {
 [ "$avail" -lt 10 ] && avail=10
 dir=$(shorten_path "$dir" "$avail")
 
-echo "$fi $dir$tail"
+left="$fi $dir$tail"
+if [ -n "$rc" ]; then
+    # Right-align a green "rc" to the edge of the line
+    pad=$((width - $(chars "$left") - 2))
+    [ "$pad" -lt 1 ] && pad=1
+    printf '%s%*s\033[32mrc\033[0m\n' "$left" "$pad" ""
+else
+    echo "$left"
+fi

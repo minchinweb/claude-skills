@@ -1,6 +1,8 @@
 Changelog
 =========
 
+- :feature:`-` ``statusline`` script: shows a green ``rc`` at the far right
+  while the session is under Remote Control.
 - :feature:`-` ``audit`` checks rule H11 (Home Assistant projects need an
   "Install to my Home Assistant" ``hacs_repository`` link in ``README.md``).
 - :support:`-` update the bundled style guide to 5c539f2: H11, the copyright
