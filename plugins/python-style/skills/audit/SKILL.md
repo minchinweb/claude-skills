@@ -29,8 +29,9 @@ local-only `DEVIATIONS.md` that is never part of this plugin.
    `STYLE.md`. Levels: `fix` is a clear deviation, `check` might be fine and
    needs a look, `info` is only informational. The script reads files and
    changes nothing. It cannot judge everything, so also skim the code for the
-   judgement rules (C1-C7: type hints, Google docstrings, pathlib, logging,
-   pytest style).
+   judgement rules (C1-C8: type hints, Google docstrings, pathlib, logging,
+   pytest style, copyright notice, and the always-pass smoke test in
+   `tests/test_setup.py`).
 3. **Decide the kind: library, app, tooling or Home Assistant
    integration.** A library is published to PyPI; an app is deployed; a
    tooling repo (scripts, plugins) is never built as a package (STYLE.md

@@ -1,6 +1,9 @@
 Changelog
 =========
 
+- :support:`-` update the bundled style guide to e5c6d32 (C8: every test suite
+  includes an always-pass smoke test); the ``audit`` skill now lists C8 among
+  the rules to check by eye.
 - :feature:`-` ``audit`` checks H11 for the ``marketplace_repository`` link
   (Home Assistant 2026.11 and later), replacing ``hacs_repository``; the
   bundled style guide is now 7a0fbfb.
