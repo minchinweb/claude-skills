@@ -132,10 +132,10 @@ def check_homeassistant(root, pp, project, tool, wf, add) -> None:
     readme = root / "README.md"
     if readme.exists():
         text = readme.read_text(encoding="utf8", errors="ignore")
-        if "my.home-assistant.io/redirect/hacs_repository" not in text:
+        if "my.home-assistant.io/redirect/marketplace_repository" not in text:
             add("H11", "README.md has no 'Install to my Home Assistant' link")
         elif "category=integration" not in text:
-            add("H11", "hacs_repository link lacks category=integration")
+            add("H11", "marketplace_repository link lacks category=integration")
 
 
 def main() -> int:

@@ -191,8 +191,8 @@ def ha_repo(tmp_path: Path) -> Path:
         encoding="utf8",
     )
     (tmp_path / "README.md").write_text(
-        "[![x](https://my.home-assistant.io/badges/hacs_repository.svg)]"
-        "(https://my.home-assistant.io/redirect/hacs_repository/"
+        "[![x](https://my.home-assistant.io/badges/marketplace_repository.svg)]"
+        "(https://my.home-assistant.io/redirect/marketplace_repository/"
         "?owner=o&repository=r&category=integration)\n",
         encoding="utf8",
     )

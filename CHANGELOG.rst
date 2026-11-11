@@ -1,6 +1,9 @@
 Changelog
 =========
 
+- :feature:`-` ``audit`` checks H11 for the ``marketplace_repository`` link
+  (Home Assistant 2026.11 and later), replacing ``hacs_repository``; the
+  bundled style guide is now 7a0fbfb.
 - :feature:`-` ``statusline`` script: shows a green ``rc`` at the far right
   while the session is under Remote Control.
 - :feature:`-` ``audit`` checks rule H11 (Home Assistant projects need an
