@@ -19,6 +19,11 @@
       "name": "git",
       "source": "./plugins/git",
       "description": "Write a commit message for the current changes and commit them, like Cursor's /commit"
+    },
+    {
+      "name": "dependabot",
+      "source": "./plugins/dependabot",
+      "description": "Fix open Dependabot security alerts: raise the minimums, relock, and ship a git-flow hotfix, then ask before merging it in"
     }
   ]
 }

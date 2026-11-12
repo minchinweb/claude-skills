@@ -1,6 +1,9 @@
 Changelog
 =========
 
+- :feature:`-` ``dependabot`` plugin: ``alerts`` skill reads a repo's open
+  Dependabot alerts, raises the minimums, and ships the fix as a git-flow hotfix
+  branch from the latest release tag, then asks before merging it in.
 - :support:`-` update the bundled style guide to e5c6d32 (C8: every test suite
   includes an always-pass smoke test); the ``audit`` skill now lists C8 among
   the rules to check by eye.

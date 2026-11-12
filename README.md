@@ -62,6 +62,16 @@ Whenever you change your status line, update that file too and push.
   changed this session. The subject always starts with 🤖 and otherwise follows
   the repo's recent commits. Never pushes.
 
+### `dependabot`
+
+- `/dependabot:alerts` -- fix a repo's open Dependabot security alerts. It reads
+  the alerts from GitHub, raises the matching minimums (direct dependencies in
+  each pyproject, transitive ones in `constraint-dependencies`), relocks, and
+  ships the fix as a git-flow hotfix branch cut from the latest release tag, in
+  its own worktree, so your current checkout is left alone. It verifies with the
+  test suite, commits, and never merges, tags or pushes: it ends by asking
+  whether to merge the hotfix in.
+
 ## Working on it
 
 Clone with `--recurse-submodules`. After the guide changes, bump the pointer:

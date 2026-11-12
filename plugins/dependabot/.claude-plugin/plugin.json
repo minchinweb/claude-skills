@@ -1,0 +1,5 @@
+{
+  "name": "dependabot",
+  "description": "MinchinWeb's Dependabot helper: /dependabot:alerts reads a repo's open security alerts, raises the minimums, relocks, and ships the fix as a git-flow hotfix, then asks before merging it in.",
+  "author": { "name": "William Minchin" }
+}
