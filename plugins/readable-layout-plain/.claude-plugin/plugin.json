@@ -1,0 +1,39 @@
+{
+  "name": "readable-layout-plain",
+  "version": "0.3.0",
+  "description": "Readable Layout with no side bars: your messages and Claude's answers sit between full-width top and bottom rules, Claude's work is quiet lines, bold text is in color, and a rule ends every turn. Forked from garvit-mods readable-layout.",
+  "author": {
+    "name": "William Minchin"
+  },
+  "license": "MIT",
+  "keywords": [
+    "readability",
+    "layout",
+    "terminal",
+    "transcript",
+    "boxes"
+  ],
+  "userConfig": {
+    "boxes": {
+      "type": "string",
+      "title": "Claude text to box",
+      "description": "answers boxes replies of more than a line or two and shows one-line notes as quiet lines; all boxes everything Claude writes",
+      "default": "answers",
+      "options": [
+        "answers",
+        "all"
+      ]
+    },
+    "bold": {
+      "type": "string",
+      "title": "Bold text",
+      "description": "color draws bold text in a soft teal; highlight puts a soft background behind it; off leaves it plain bold",
+      "default": "color",
+      "options": [
+        "color",
+        "highlight",
+        "off"
+      ]
+    }
+  }
+}

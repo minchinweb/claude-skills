@@ -24,6 +24,11 @@
       "name": "dependabot",
       "source": "./plugins/dependabot",
       "description": "Fix open Dependabot security alerts: raise the minimums, relock, and ship a git-flow hotfix, then ask before merging it in"
+    },
+    {
+      "name": "readable-layout-plain",
+      "source": "./plugins/readable-layout-plain",
+      "description": "Readable transcript layout with full-width top and bottom rules and no side bars, so copied text is clean. Forked from garvit-mods readable-layout"
     }
   ]
 }
