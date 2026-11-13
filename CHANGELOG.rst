@@ -1,6 +1,8 @@
 Changelog
 =========
 
+- :feature:`-` ``statusline`` script: the week figure shows the days until the
+  weekly limit resets, e.g. ``week: 18% (6d)``.
 - :feature:`-` ``dependabot`` plugin: ``alerts`` skill reads a repo's open
   Dependabot alerts, raises the minimums, and ships the fix as a git-flow hotfix
   branch from the latest release tag, then asks before merging it in.

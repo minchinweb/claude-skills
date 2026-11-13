@@ -12,6 +12,18 @@ model=$(field display_name)
 branch=$(git -C "$dir" --no-optional-locks symbolic-ref --short HEAD 2>/dev/null)
 five=$(echo "$input" | sed -n 's/.*"five_hour": *{[^}]*"used_percentage": *\([0-9.]*\).*/\1/p')
 week=$(echo "$input" | sed -n 's/.*"seven_day": *{[^}]*"used_percentage": *\([0-9.]*\).*/\1/p')
+# Days until the weekly limit resets (rounded up); accepts an epoch or an ISO timestamp
+reset=$(echo "$input" | sed -n 's/.*"seven_day": *{\([^}]*\)}.*/\1/p' | sed -n 's/.*"resets_at": *"\{0,1\}\([^",}]*\).*/\1/p')
+case "$reset" in
+    '' ) reset_epoch= ;;
+    *[!0-9]*) reset_epoch=$(date -d "$reset" +%s 2>/dev/null) ;;
+    *) reset_epoch=$reset ;;
+esac
+week_days=""
+if [ -n "$reset_epoch" ]; then
+    left=$((reset_epoch - $(date +%s)))
+    [ "$left" -gt 0 ] && week_days=$(((left + 86399) / 86400))
+fi
 ctx=$(echo "$input" | sed 's/.*"context_window": *{//; s/"remaining_percentage".*//' | sed -n 's/.*"used_percentage": *\([0-9.]*\).*/\1/p')
 
 # Remote Control: this session's record in ~/.claude/sessions has a bridgeSessionId
@@ -38,7 +50,7 @@ tail=""
 tail="$tail | $model"
 [ -n "$ctx" ] && tail="$tail | ctx $(printf '%.0f' "$ctx")%"
 [ -n "$five" ] && tail="$tail | session: $(printf '%.0f' "$five")%"
-[ -n "$week" ] && tail="$tail | week: $(printf '%.0f' "$week")%"
+[ -n "$week" ] && tail="$tail | week: $(printf '%.0f' "$week")%${week_days:+ (${week_days}d)}"
 
 # Characters, not bytes (the icons are multibyte)
 chars() { printf '%s' "$1" | wc -m | tr -d ' '; }
