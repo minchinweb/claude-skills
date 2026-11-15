@@ -2,6 +2,8 @@
 
 A fork of [readable-layout](https://github.com/GarvitNangru/claude-code-mods/tree/main/mods/readable-layout) by Garvit Nangru (MIT). The change: no side bars. Your messages and Claude's answers sit between full-width top and bottom rules with the label on the top rule, so copying text from the terminal picks up no box edges. Bold, quiet notes and the end-of-turn rule work as in the original.
 
+Two additions to the original: the end-of-turn rule shows the clock time at the right, and the plugin watches the prompt cache. An hour after the last turn (a subscription's cache lifetime) it adds a `✻ Prompt cache expired at …` rule to the transcript if the session is still open, and `/cache-age` shows when the last turn ended and when the cache expires.
+
 The settings are the same: `boxes` (`answers` or `all`) and `bold` (`color`, `highlight` or `off`). Config key is `readable-layout-plain`.
 
 ---

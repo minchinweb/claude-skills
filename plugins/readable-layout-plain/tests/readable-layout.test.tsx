@@ -1,4 +1,4 @@
-import { describe, expect, test } from 'claude-code/testing'
+import { describe, expect, mock, test } from 'claude-code/testing'
 import type { Engine } from 'claude-code/testing'
 import type { On, PromptOrigin } from 'claude-code'
 
@@ -176,6 +176,89 @@ describe('end of turn', () => {
     })
     const rule = (await ui.find({ type: 'Text' }))?.text ?? ''
     expect(rule.startsWith('── ✻ Baked for 1m 5s ──')).toBe(true)
+    expect(rule).toMatch(/ \d\d:\d\d (AM|PM) ──$/)
     expect(rule.length).toBe(60)
+  })
+})
+
+const HOUR = 60 * 60 * 1000
+const TURN = { answer: '', durationMs: 1000, isAborted: false, turnId: 't1', reason: 'answer' } as const
+
+describe('prompt cache expiry', () => {
+  test('puts a line in the transcript an hour after the last turn', async ($, on) => {
+    const clock = mock.clock(on)
+    on('turn.complete', (_$, e) => ({ text: e.answer }))
+    const lines: string[] = []
+    on('ui.log', ($, e, next) => (lines.push(e.text), next(e)))
+    await $.turn.complete(TURN)
+    await clock.advance(HOUR - 1000)
+    expect(lines).toEqual([])
+    await clock.advance(1000)
+    expect(lines).toHaveLength(1)
+    expect(lines[0]).toMatch(/^✻ Prompt cache expired at \d\d:\d\d (AM|PM)$/)
+  })
+
+  test('a later turn restarts the wait', async ($, on) => {
+    const clock = mock.clock(on)
+    on('turn.complete', (_$, e) => ({ text: e.answer }))
+    const lines: string[] = []
+    on('ui.log', ($, e, next) => (lines.push(e.text), next(e)))
+    await $.turn.complete(TURN)
+    await clock.advance(HOUR - 1000)
+    await $.turn.complete({ ...TURN, turnId: 't2' })
+    await clock.advance(HOUR - 1000)
+    expect(lines).toEqual([])
+    await clock.advance(1000)
+    expect(lines).toHaveLength(1)
+  })
+
+  test('is drawn as a rule across the width', async ($, on) => {
+    engineBeneath(on)
+    const ui = await $.ui.mount({
+      plugin: PLUGIN,
+      surface: 'terminal',
+      component: 'InfoNotice',
+      props: { text: '✻ Prompt cache expired at 03:50 PM', command: null },
+      viewport: { columns: 60, rows: 30 },
+    })
+    const rule = (await ui.find({ type: 'Text' }))?.text ?? ''
+    expect(rule.startsWith('── ✻ Prompt cache expired at 03:50 PM ─')).toBe(true)
+    expect(rule.length).toBe(60)
+  })
+
+  test('leaves other notices to the engine', async ($, on) => {
+    on('ui.render', { component: 'InfoNotice' }, ($, e) => {
+      const { Text } = $.ui.resolve(e)
+      return <Text>engine: {e.props.text}</Text>
+    })
+    const ui = await $.ui.mount({
+      plugin: PLUGIN,
+      surface: 'terminal',
+      component: 'InfoNotice',
+      props: { text: 'Something else', command: null },
+    })
+    expect((await ui.find({ type: 'Text' }))?.text).toBe('engine: Something else')
+  })
+})
+
+describe('/cache-age', () => {
+  test('says so when no turn has finished', async ($, on) => {
+    mock.clock(on)
+    const { text } = await $.command.run({ command: 'cache-age', args: '' })
+    expect(text).toMatch(/No turn has finished/)
+  })
+
+  test('reports the age and the time left, then the time since expiry', async ($, on) => {
+    const clock = mock.clock(on)
+    on('turn.complete', (_$, e) => ({ text: e.answer }))
+    await $.turn.complete(TURN)
+    await clock.advance(12 * 60 * 1000)
+    let { text } = await $.command.run({ command: 'cache-age', args: '' })
+    expect(text).toContain('(12m 0s ago)')
+    expect(text).toContain('in 48m 0s')
+    await clock.advance(HOUR)
+    ;({ text } = await $.command.run({ command: 'cache-age', args: '' }))
+    expect(text).toContain('Cache expired:')
+    expect(text).toContain('(12m 0s ago)')
   })
 })
