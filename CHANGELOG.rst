@@ -1,6 +1,11 @@
 Changelog
 =========
 
+- :feature:`-` ``readable-layout-plain`` 0.6.0: only each turn's final answer
+  gets the Claude box; text between tool calls is an indented note in the
+  normal text color (no longer dimmed); ``> [!NOTE]``-style alert blocks draw
+  as colored callouts; the new ``calloutHint`` option tells Claude about both.
+  Ideas borrowed from prismantis.
 - :feature:`-` ``statusline`` script: the model name is colour coded (Haiku
   cyan, Sonnet yellow, Opus magenta, Fable bright blue, anything else white).
 - :feature:`-` ``statusline`` script: the week figure shows the days until the

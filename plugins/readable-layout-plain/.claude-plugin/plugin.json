@@ -1,7 +1,7 @@
 {
   "name": "readable-layout-plain",
-  "version": "0.5.0",
-  "description": "Readable Layout with no side bars: your messages and Claude's answers sit between full-width top and bottom rules, Claude's work is quiet lines, bold text is in color, and a rule ends every turn. Forked from garvit-mods readable-layout.",
+  "version": "0.6.0",
+  "description": "Readable Layout with no side bars: your messages and Claude's final answer sit between full-width top and bottom rules, Claude's work between tool calls is indented notes, alert blocks are colored callouts, bold text is in color, and a rule ends every turn. Forked from garvit-mods readable-layout.",
   "author": {
     "name": "William Minchin"
   },
@@ -17,7 +17,7 @@
     "boxes": {
       "type": "string",
       "title": "Claude text to box",
-      "description": "answers boxes replies of more than a line or two and shows one-line notes as quiet lines; all boxes everything Claude writes",
+      "description": "answers boxes only the final answer of each turn and shows Claude's other text as indented notes; all boxes everything Claude writes",
       "default": "answers",
       "options": [
         "answers",
@@ -43,6 +43,16 @@
       "options": [
         "off",
         "on"
+      ]
+    },
+    "calloutHint": {
+      "type": "string",
+      "title": "Tell Claude about callouts",
+      "description": "on adds a short note (about 120 tokens, once per conversation) telling Claude that its final answer is boxed and that > [!NOTE], [!TIP], [!IMPORTANT], [!WARNING] and [!CAUTION] blocks draw as colored callouts, to use for things you need to know or act on; off leaves it out",
+      "default": "on",
+      "options": [
+        "on",
+        "off"
       ]
     }
   }

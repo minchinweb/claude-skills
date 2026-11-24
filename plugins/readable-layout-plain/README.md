@@ -8,7 +8,20 @@ The `keepwarm` option (off by default) sends a one-word refresh 50 minutes after
 
 `/keepalive` runs the same refresh through a window of time: `/keepalive 60` (minutes) or `/keepalive 5h` or `/keepalive 2h30m`. It refreshes 50 minutes after the last warm moment, every 50 minutes after that, and once more at the end of the window. `/keepalive off` stops it, and `/keepalive` alone shows whether it is running. `/cache-age` also shows the keepalive state and the context size. Before it starts, it reads the last turn (from this session, or else the transcript file's last write). If that was more than an hour ago the cache has lapsed, so it warns and does not start, because a refresh would then rewrite the whole context.
 
-The settings are the same: `boxes` (`answers` or `all`) and `bold` (`color`, `highlight` or `off`). Config key is `readable-layout-plain`.
+Only the **final answer** of each turn gets the Claude box. The text Claude writes between tool calls ("Checking the config first", or a longer plan) is an indented note in the normal text color, not dimmed, so it stays readable without looking like the answer. The plugin learns which text was the answer when the turn ends, so the answer is drawn as a note while it streams in and gets its box the moment the turn finishes. Answers are kept in the plugin's store (the last 300), so a resumed session boxes them too; answers from before version 0.6.0 show as notes.
+
+GitHub alert blocks draw as **callouts**: a colored rule with the label, the body, and a closing rule, indented and with no side bars.
+
+```
+> [!WARNING]
+> The token expires on Friday.
+```
+
+`NOTE` is blue, `TIP` green, `IMPORTANT` purple, `WARNING` yellow and `CAUTION` red. They work in answers and notes alike, and markers inside code fences are left alone. Callouts and the final-answer box were borrowed as ideas from [prismantis](https://github.com/NahumLitvin/prismantis) (MIT), which draws alerts the same way and tells the model what the terminal can draw.
+
+The `calloutHint` option (on by default) does the second part: once per conversation it adds a short note (about 120 tokens) telling Claude that its final answer is boxed and that callouts are there for what you need to know or act on, at most one or two per reply. Set it to `off` to leave the note out.
+
+The other settings are the same: `boxes` (`answers` boxes only the final answer, `all` boxes everything) and `bold` (`color`, `highlight` or `off`). Config key is `readable-layout-plain`.
 
 ---
 

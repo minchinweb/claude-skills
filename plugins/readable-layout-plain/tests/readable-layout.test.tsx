@@ -8,7 +8,7 @@ const NOTE = 'Checking the config first:'
 const ACCENT = { bold: true, color: 'cyan_FOR_SUBAGENTS_ONLY' }
 const PLUGIN = 'readable-layout'
 
-function engineBeneath(on: On): void {
+function engineBeneath(on: On, stored: Record<string, unknown> = {}): void {
   on('ui.render', { component: 'AssistantMessage' }, ($, e) => {
     const { Text } = $.ui.resolve(e)
     return <Text>engine: {e.props.text}</Text>
@@ -21,6 +21,10 @@ function engineBeneath(on: On): void {
     const { Text } = $.ui.resolve(e)
     return <Text>engine: {e.props.word}</Text>
   })
+  on('turn.complete', (_$, e) => ({ text: e.answer }))
+  on('prompt.context', (_$, e) => ({ blocks: e.blocks }))
+  on('session.start', (_$, e) => ({ cwd: e.cwd }))
+  mock.store(on, stored)
 }
 
 const mountReply = ($: Engine, surface: 'terminal' | 'desktop', text: string, isSummary?: true) =>
@@ -30,6 +34,18 @@ const mountReply = ($: Engine, surface: 'terminal' | 'desktop', text: string, is
     component: 'AssistantMessage',
     props: { text, isFirstOfReply: true, ...(isSummary ? { isSummary } : {}) },
   })
+
+// Ends a turn with `text` as its answer, then draws it, as the transcript does.
+const mountAnswer = async ($: Engine, text: string, columns?: number) => {
+  await $.turn.complete({ ...TURN, answer: text })
+  return $.ui.mount({
+    plugin: PLUGIN,
+    surface: 'terminal',
+    component: 'AssistantMessage',
+    props: { text, isFirstOfReply: true },
+    ...(columns ? { viewport: { columns, rows: 30 } } : {}),
+  })
+}
 
 const mountPrompt = ($: Engine, surface: 'terminal' | 'desktop', text: string, origin: PromptOrigin = { kind: 'composer' }) =>
   $.ui.mount({ plugin: PLUGIN, surface, component: 'UserMessage', props: { text, origin, isExpanded: true } })
@@ -57,20 +73,58 @@ describe('your messages', () => {
 })
 
 describe("Claude's text", () => {
-  test('an answer sits in a box labeled Claude, rendered as markdown', async ($, on) => {
+  test("the turn's final answer sits in a box labeled Claude, rendered as markdown", async ($, on) => {
     engineBeneath(on)
-    const ui = await mountReply($, 'terminal', PLAIN_ANSWER)
+    const ui = await mountAnswer($, PLAIN_ANSWER)
     expect((await ui.find({ type: 'Text', text: /── Claude/ }))?.props).toMatchObject({ color: 'claude' })
     expect((await ui.findAll({ type: 'Box' })).some(b => b.props.borderStyle)).toBe(false)
     expect((await ui.find({ type: 'Markdown' }))?.text).toBe(PLAIN_ANSWER)
   })
 
-  test('a one-line note is a quiet, indented line with space above it', async ($, on) => {
+  test('text between tool calls is an indented note in the normal text color', async ($, on) => {
     engineBeneath(on)
     const ui = await mountReply($, 'terminal', NOTE)
     expect((await ui.find({ type: 'Box' }))?.props).toMatchObject({ marginTop: 1, paddingLeft: 2 })
-    expect((await ui.find({ type: 'Markdown' }))?.props).toMatchObject({ dimColor: true, text: NOTE })
+    expect((await ui.find({ type: 'Markdown' }))?.props).toEqual({ text: NOTE })
     expect((await ui.findAll({ type: 'Box' })).some(b => b.props.borderStyle)).toBe(false)
+  })
+
+  test('long text that is not the final answer is a note too, not a box', async ($, on) => {
+    engineBeneath(on)
+    await $.turn.complete({ ...TURN, answer: 'Something else entirely, the real answer.' })
+    const ui = await mountReply($, 'terminal', PLAIN_ANSWER)
+    expect(await ui.find({ type: 'Text', text: /── Claude/ })).toBeUndefined()
+    expect((await ui.find({ type: 'Box' }))?.props).toMatchObject({ paddingLeft: 2 })
+  })
+
+  test('a drawn block gets its box once the turn ends with it as the answer', async ($, on) => {
+    engineBeneath(on)
+    const ui = await mountReply($, 'terminal', PLAIN_ANSWER)
+    expect(await ui.find({ type: 'Text', text: /── Claude/ })).toBeUndefined()
+    await $.turn.complete({ ...TURN, answer: PLAIN_ANSWER })
+    expect(await ui.find({ type: 'Text', text: /── Claude/ })).toBeDefined()
+  })
+
+  test('a long block that is part of the answer is boxed, a short one is not', async ($, on) => {
+    engineBeneath(on)
+    const part = 'Here is the first part of the answer, long enough to count.'
+    await $.turn.complete({ ...TURN, answer: `${part}\n\nDone.` })
+    expect(await (await mountReply($, 'terminal', part)).find({ type: 'Text', text: /── Claude/ })).toBeDefined()
+    expect(await (await mountReply($, 'terminal', 'Done.')).find({ type: 'Text', text: /── Claude/ })).toBeUndefined()
+  })
+
+  test('answers from earlier sessions are read back from the store', async ($, on) => {
+    engineBeneath(on, { answers: [PLAIN_ANSWER] })
+    await $.session.start({ cwd: '.', surface: 'terminal', isInteractive: true })
+    const ui = await mountReply($, 'terminal', PLAIN_ANSWER)
+    expect(await ui.find({ type: 'Text', text: /── Claude/ })).toBeDefined()
+  })
+
+  test('an interrupted turn does not box its text', async ($, on) => {
+    engineBeneath(on)
+    await $.turn.complete({ ...TURN, answer: PLAIN_ANSWER, isAborted: true, reason: 'aborted' })
+    const ui = await mountReply($, 'terminal', PLAIN_ANSWER)
+    expect(await ui.find({ type: 'Text', text: /── Claude/ })).toBeUndefined()
   })
 
   test('summaries and other surfaces are left to the engine', async ($, on) => {
@@ -95,7 +149,7 @@ const strongTexts = async (ui: Awaited<ReturnType<typeof mountReply>>, style: Re
 describe('bold text', () => {
   test('is drawn in the accent color, and parts without bold stay with the engine', async ($, on) => {
     engineBeneath(on)
-    const ui = await mountReply($, 'terminal', ANSWER)
+    const ui = await mountAnswer($, ANSWER)
     expect(await strongTexts(ui)).toEqual(['Agent Monitor', 'Ember'])
     expect((await ui.findAll({ type: 'Markdown' })).map(m => m.text)).toEqual(['Both are done.'])
     expect((await ui.findAll({ type: 'Text', text: /^-$/ })).length).toBe(2)
@@ -117,7 +171,7 @@ describe('bold text', () => {
   test('nested lists keep their markers and indents', async ($, on) => {
     engineBeneath(on)
     const text = '1. **Install** it:\n   1. download\n   2. unzip\n\n   Then restart.\n2. Done'
-    const ui = await mountReply($, 'terminal', text)
+    const ui = await mountAnswer($, text)
     expect((await ui.findAll({ type: 'Text', text: /^[\da-z]\.$/ })).map(t => t.text)).toEqual(['1.', 'a.', 'b.', '2.'])
     const rows = (await ui.findAll({ type: 'Box' })).filter(b => b.props.flexDirection === 'row' && b.props.paddingLeft !== undefined)
     expect(rows.map(b => b.props.paddingLeft)).toEqual([0, 3, 3, 0])
@@ -143,24 +197,73 @@ describe('bold text', () => {
     expect((await ui.findAll({ type: 'Markdown' })).map(m => m.text)).toEqual([`${fence}\n\n${table}`])
   })
 
-  test('a one-line note keeps its dim look', async ($, on) => {
+  test('a note colors its bold text too, and is not dimmed', async ($, on) => {
     engineBeneath(on)
     const ui = await mountReply($, 'terminal', 'Now **reading** the theme.')
     expect(await strongTexts(ui)).toEqual(['reading'])
-    expect((await ui.find({ type: 'Text', text: 'the theme' }))?.props).toMatchObject({ dimColor: true })
+    expect((await ui.findAll({ type: 'Text' })).some(t => t.props.dimColor)).toBe(false)
   })
 
   test('with bold set to highlight, bold text gets a background', { options: { bold: 'highlight' } }, async ($, on) => {
     engineBeneath(on)
-    const ui = await mountReply($, 'terminal', ANSWER)
+    const ui = await mountAnswer($, ANSWER)
     expect(await strongTexts(ui, { bold: true, backgroundColor: 'selectionBg' })).toEqual(['Agent Monitor', 'Ember'])
   })
 
   test('with bold set to off, the engine draws the whole answer', { options: { bold: 'off' } }, async ($, on) => {
     engineBeneath(on)
-    const ui = await mountReply($, 'terminal', ANSWER)
+    const ui = await mountAnswer($, ANSWER)
     expect((await ui.find({ type: 'Markdown' }))?.text).toBe(ANSWER)
     expect(await strongTexts(ui)).toEqual([])
+  })
+})
+
+describe('callouts', () => {
+  const WARN = 'All set.\n\n> [!WARNING]\n> The **token** expires on Friday.\n> Renew it first.\n\nThat is all.'
+
+  test('an alert block is a callout in its color, with its body drawn as markdown', async ($, on) => {
+    engineBeneath(on)
+    const ui = await mountAnswer($, WARN, 60)
+    const head = await ui.find({ type: 'Text', text: /^── Warning ─+$/ })
+    expect(head?.props).toMatchObject({ color: 'warning' })
+    expect(head?.text.length).toBe(58)
+    expect(await strongTexts(ui)).toEqual(['token'])
+    expect(await ui.find({ type: 'Text', text: /Renew it first/ })).toBeDefined()
+    expect((await ui.findAll({ type: 'Markdown' })).map(m => m.text)).toEqual(['All set.', 'That is all.'])
+    expect((await ui.findAll({ type: 'Box' })).some(b => b.props.borderStyle)).toBe(false)
+  })
+
+  test('each level has its own label and color, and a note can hold one', async ($, on) => {
+    engineBeneath(on)
+    const levels = [['NOTE', 'Note', 'suggestion'], ['tip', 'Tip', 'success'], ['IMPORTANT', 'Important', 'merged'], ['CAUTION', 'Caution', 'error']] as const
+    for (const [tag, label, color] of levels) {
+      const ui = await mountReply($, 'terminal', `> [!${tag}] Read this.`)
+      expect((await ui.find({ type: 'Text', text: new RegExp(`^── ${label} `) }))?.props).toMatchObject({ color })
+      expect((await ui.find({ type: 'Markdown' }))?.text).toBe('Read this.')
+    }
+  })
+
+  test('alert markers in code fences and plain quotes are left alone', async ($, on) => {
+    engineBeneath(on)
+    const text = '```md\n> [!WARNING]\n> not a callout\n```\n\n> just a quote'
+    const ui = await mountAnswer($, text)
+    expect(await ui.find({ type: 'Text', text: /── Warning/ })).toBeUndefined()
+    expect((await ui.find({ type: 'Markdown' }))?.text).toBe(text)
+  })
+})
+
+describe('callout hint', () => {
+  test('tells the model once, in the conversation context', async ($, on) => {
+    engineBeneath(on)
+    const { blocks } = await $.prompt.context({ blocks: [{ name: 'currentDate', text: 'today' }] })
+    expect(blocks.map(b => b.name)).toEqual(['currentDate', 'terminalCallouts'])
+    expect(blocks[1]?.text).toMatch(/\[!WARNING\]/)
+  })
+
+  test('is left out when calloutHint is off', { options: { calloutHint: 'off' } }, async ($, on) => {
+    engineBeneath(on)
+    const { blocks } = await $.prompt.context({ blocks: [] })
+    expect(blocks).toEqual([])
   })
 })
 

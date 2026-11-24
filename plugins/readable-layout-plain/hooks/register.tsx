@@ -1,10 +1,34 @@
 import type { EngineInterface, Register, RenderElement, Timer } from 'claude-code'
 import { drawMarkdown, type Emphasis } from './markdown'
 
-const SHORT_NOTE_CHARS = 160
 const MIN_MS = 60 * 1000
 
-const isShortNote = (text: string): boolean => !text.includes('\n') && text.length <= SHORT_NOTE_CHARS
+// Final answers seen, newest last, kept in the plugin store so a resumed session
+// still boxes them. Capped so the store stays small.
+const ANSWERS_KEY = 'answers'
+const MAX_ANSWERS = 300
+// A block that is only part of an answer must be at least this long to count, so a
+// short note ("Done.") is not boxed because some answer happens to contain it.
+const MIN_PART_CHARS = 40
+
+const norm = (text: string): string => text.replace(/\r\n/g, '\n').trim()
+
+// Told to the model once per conversation, so it knows what the terminal draws.
+const HINT_BLOCK = 'terminalCallouts'
+const HINT = [
+  'The terminal draws your final answer of each turn in a box, and your other text between tool calls as quiet notes.',
+  'It also draws GitHub alert blocks as colored callout boxes: `> [!NOTE]`, `> [!TIP]`, `> [!IMPORTANT]`, `> [!WARNING]` and `> [!CAUTION]`, each followed by `>` lines.',
+  'Use a callout for something the user must know or act on: a decision they need to make, a step only they can do, a risk, a failed check, or something you could not finish.',
+  'Use at most one or two per reply, and none when nothing needs flagging; leave routine progress and summaries as plain text.',
+].join(' ')
+
+// Is this block the turn's final answer, or the end or a long part of one?
+function isAnswer(text: string, answers: readonly string[], exact: ReadonlySet<string>): boolean {
+  const t = norm(text)
+  if (exact.has(t)) return true
+  if (t.length < MIN_PART_CHARS) return false
+  return answers.some(a => a.includes(t))
+}
 
 const fmtDuration = (ms: number): string => {
   const s = Math.max(1, Math.round(ms / 1000))
@@ -155,6 +179,19 @@ export const register: Register = (on, options) => {
   const boxesAll = options.boxes === 'all'
   const emphasis: Emphasis = options.bold === 'highlight' || options.bold === 'off' ? options.bold : 'color'
   const c: CacheState = { keepwarm: options.keepwarm === 'on', turnGen: 0, refreshes: 0 }
+  const calloutHint = options.calloutHint !== 'off'
+  let answers: string[] = []
+  let exact = new Set<string>()
+  const remember = (list: string[]) => {
+    answers = list.slice(-MAX_ANSWERS)
+    exact = new Set(answers)
+  }
+
+  on('prompt.context', async ($, e, next) => {
+    const r = await next(e)
+    if (!calloutHint || r.blocks.some(b => b.name === HINT_BLOCK)) return r
+    return { ...r, blocks: [...r.blocks, { name: HINT_BLOCK, text: HINT }] }
+  })
 
   on('turn.start', ($, e, next) => {
     if (e.agentId === undefined) {
@@ -164,6 +201,15 @@ export const register: Register = (on, options) => {
     return next(e)
   })
   on('turn.complete', async ($, e, next) => {
+    if (e.agentId === undefined && e.reason === 'answer' && norm(e.answer)) {
+      const a = norm(e.answer)
+      if (!exact.has(a)) {
+        remember([...answers, a])
+        await $.store.set(ANSWERS_KEY, answers).catch(() => undefined)
+      }
+      // Redraw what is on screen, so the answer that just finished gets its box.
+      $.ui.invalidate('ui.render')
+    }
     if (e.agentId === undefined) {
       const now = await $.clock.now()
       c.lastTurnAt = now
@@ -181,6 +227,11 @@ export const register: Register = (on, options) => {
   // /cache-age: how old the prompt cache is and when it runs out.
   // /keepalive: refresh the cache through a window of time, e.g. `/keepalive 60` or `/keepalive 5h`.
   on('session.start', async ($, e, next) => {
+    const stored = await $.store.get(ANSWERS_KEY).catch(() => undefined)
+    if (Array.isArray(stored)) {
+      remember([...stored.filter((a): a is string => typeof a === 'string'), ...answers])
+      $.ui.invalidate('ui.render')
+    }
     await $.command.register({ name: 'cache-age', description: 'Show when the prompt cache last refreshed and when it expires' })
     await $.command.register({
       name: 'keepalive',
@@ -269,16 +320,19 @@ export const register: Register = (on, options) => {
     if (e.surface !== 'terminal' || e.props.isSummary || !text) return next(e)
     const ui = $.ui.resolve(e)
     const { Box, Text } = ui
+    const columns = Math.max(24, e.viewport?.columns ?? 80)
 
-    if (!boxesAll && isShortNote(text)) {
+    // Only the turn's final answer gets the box. Text between tool calls is a note:
+    // indented, in the normal text color, so it reads clearly without competing.
+    if (!boxesAll && !isAnswer(text, answers, exact)) {
       return (
         <Box flexDirection="row" marginTop={1} paddingLeft={2}>
           <Text color="subtle">{'· '}</Text>
-          {drawMarkdown(ui, text, emphasis, true)}
+          {drawMarkdown(ui, text, emphasis, columns - 4)}
         </Box>
       )
     }
-    return framed(Box, Text, 'Claude', 'claude', drawMarkdown(ui, text, emphasis), e.viewport?.columns)
+    return framed(Box, Text, 'Claude', 'claude', drawMarkdown(ui, text, emphasis, columns), columns)
   })
 
   on('ui.render', { component: 'TurnDuration' }, ($, e, next) => {

@@ -43,9 +43,100 @@ const WORD = /[\p{L}\p{N}]/u
 const LINKABLE = /^(?:https?|file):/i
 const MAX_INDENT = 32
 
-export function drawMarkdown(ui: Ui, text: string, emphasis: Emphasis, dimColor = false): RenderElement {
+export type AlertLevel = 'note' | 'tip' | 'important' | 'warning' | 'caution'
+
+// GitHub alert blocks, drawn as callouts: a colored rule with the label on top,
+// the body, and a closing rule, indented and with no side bars.
+const ALERT_STYLE: Record<AlertLevel, { label: string; color: string }> = {
+  note: { label: 'Note', color: 'suggestion' },
+  tip: { label: 'Tip', color: 'success' },
+  important: { label: 'Important', color: 'merged' },
+  warning: { label: 'Warning', color: 'warning' },
+  caution: { label: 'Caution', color: 'error' },
+}
+const ALERT = /^ {0,3}> ?\[!(note|tip|important|warning|caution)\][ \t]*(.*)$/i
+const QUOTED = /^ {0,3}> ?(.*)$/
+const ALERT_INDENT = 2
+
+type Part = { kind: 'text'; text: string } | { kind: 'alert'; level: AlertLevel; body: string }
+
+export function drawMarkdown(ui: Ui, text: string, emphasis: Emphasis, columns = 80): RenderElement {
+  const parts = splitAlerts(text)
+  const only = parts[0]
+  if (parts.length === 1 && only?.kind === 'text') return drawBody(ui, only.text, emphasis)
+  const { Box } = ui
+  return (
+    <Box flexDirection="column">
+      {parts.map((p, i) => (
+        <Box flexDirection="column" marginTop={i ? 1 : 0}>
+          {p.kind === 'alert' ? drawAlert(ui, p.level, p.body, emphasis, columns) : drawBody(ui, p.text, emphasis)}
+        </Box>
+      ))}
+    </Box>
+  )
+}
+
+function drawAlert(ui: Ui, level: AlertLevel, body: string, emphasis: Emphasis, columns: number): RenderElement {
+  const { Box, Text } = ui
+  const { label, color } = ALERT_STYLE[level]
+  const width = Math.max(20, columns - ALERT_INDENT)
+  const head = `── ${label} `
+  return (
+    <Box flexDirection="column" paddingLeft={ALERT_INDENT}>
+      <Text color={color} wrap="truncate-end">
+        <Text bold>{head}</Text>
+        {'─'.repeat(Math.max(0, width - head.length))}
+      </Text>
+      {body.trim() ? <Box flexDirection="column">{drawBody(ui, body, emphasis)}</Box> : []}
+      <Text color={color} wrap="truncate-end">
+        {'─'.repeat(width)}
+      </Text>
+    </Box>
+  )
+}
+
+// Splits out `> [!NOTE]`-style alert blocks, outside code fences, from the rest.
+export function splitAlerts(text: string): Part[] {
+  const parts: Part[] = []
+  let buf: string[] = []
+  const flush = () => {
+    while (buf.length && !buf[0]?.trim()) buf.shift()
+    while (buf.length && !buf.at(-1)?.trim()) buf.pop()
+    if (buf.length) parts.push({ kind: 'text', text: buf.join('\n') })
+    buf = []
+  }
+  const lines = text.replace(/\r\n/g, '\n').split('\n')
+  let fence: RegExp | undefined
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i] ?? ''
+    if (fence) {
+      if (fence.test(line)) fence = undefined
+      buf.push(line)
+      continue
+    }
+    const open = FENCE.exec(line)?.[1]
+    if (open) {
+      fence = new RegExp(`^ {0,3}${open.charAt(0)}{${open.length},}\\s*$`)
+      buf.push(line)
+      continue
+    }
+    const alert = ALERT.exec(line)
+    if (!alert) {
+      buf.push(line)
+      continue
+    }
+    flush()
+    const body = alert[2]?.trim() ? [alert[2]] : []
+    while (i + 1 < lines.length && QUOTED.test(lines[i + 1] ?? '')) body.push(QUOTED.exec(lines[++i] ?? '')?.[1] ?? '')
+    parts.push({ kind: 'alert', level: (alert[1] ?? 'note').toLowerCase() as AlertLevel, body: body.join('\n') })
+  }
+  flush()
+  return parts.length ? parts : [{ kind: 'text', text }]
+}
+
+function drawBody(ui: Ui, text: string, emphasis: Emphasis): RenderElement {
   const { Box, Markdown } = ui
-  const native = (t: string) => (dimColor ? <Markdown text={t} dimColor /> : <Markdown text={t} />)
+  const native = (t: string) => <Markdown text={t} />
   if (emphasis === 'off') return native(text)
 
   const segments: Chunk[] = []
@@ -56,7 +147,7 @@ export function drawMarkdown(ui: Ui, text: string, emphasis: Emphasis, dimColor 
   }
   if (!segments.some(s => s.blocks)) return native(text)
 
-  const blocks = blockDrawer(ui, STRONG_STYLE[emphasis], dimColor)
+  const blocks = blockDrawer(ui, STRONG_STYLE[emphasis])
   return (
     <Box flexDirection="column">
       {segments.map((s, i) => (
@@ -68,7 +159,7 @@ export function drawMarkdown(ui: Ui, text: string, emphasis: Emphasis, dimColor 
   )
 }
 
-function blockDrawer({ Box, Text, Link }: Ui, strong: TextProps, dim: boolean) {
+function blockDrawer({ Box, Text, Link }: Ui, strong: TextProps) {
   const spans = (src: Span[]): RenderChildren =>
     src.map(s => {
       if (typeof s === 'string') return s
@@ -96,13 +187,13 @@ function blockDrawer({ Box, Text, Link }: Ui, strong: TextProps, dim: boolean) {
       return [
         <Box flexDirection="row" paddingLeft={indent} marginTop={item.gaps[0] ? 1 : 0}>
           <Box width={cell} flexShrink={0}>
-            <Text dimColor={dim}>{marker}</Text>
+            <Text>{marker}</Text>
           </Box>
-          <Text dimColor={dim}>{prose(item.paras[0])}</Text>
+          <Text>{prose(item.paras[0])}</Text>
         </Box>,
         item.paras.slice(1).map((p, k) => (
           <Box paddingLeft={indent + cell} marginTop={item.gaps[k + 1] ? 1 : 0}>
-            <Text dimColor={dim}>{prose(p)}</Text>
+            <Text>{prose(p)}</Text>
           </Box>
         )),
         item.lists.map(sub => list(sub, Math.min(indent + cell, MAX_INDENT), depth + 1)),
@@ -123,7 +214,7 @@ function blockDrawer({ Box, Text, Link }: Ui, strong: TextProps, dim: boolean) {
       const h1 = b.kind === 'heading' && b.depth === 1
       return (
         <Box marginTop={marginTop}>
-          <Text dimColor={dim} bold={b.kind === 'heading'} italic={h1} underline={h1}>
+          <Text bold={b.kind === 'heading'} italic={h1} underline={h1}>
             {prose(b.lines)}
           </Text>
         </Box>
