@@ -1,5 +1,5 @@
 import { describe, expect, mock, test } from 'claude-code/testing'
-import type { Engine } from 'claude-code/testing'
+import type { Engine, MockClock } from 'claude-code/testing'
 import type { On, PromptOrigin } from 'claude-code'
 
 const ANSWER = 'Both are done.\n\n- **Agent Monitor** is pushed\n- **Ember** is applied'
@@ -241,15 +241,195 @@ describe('prompt cache expiry', () => {
   })
 })
 
+describe('keepwarm', () => {
+  const MIN = 60 * 1000
+  const warmReply = { isAnswered: true, text: 'ok', usage: { input_tokens: 2, output_tokens: 1, cache_read_input_tokens: 200000, cache_creation_input_tokens: 0 } }
+  const coldReply = { isAnswered: true, text: 'ok', usage: { input_tokens: 2, output_tokens: 1, cache_read_input_tokens: 0, cache_creation_input_tokens: 200000 } }
+
+  // Moves the clock, then lets the refresh the move woke run to its end before the next step.
+  const advance = async (clock: MockClock, ms: number) => {
+    await clock.advance(ms)
+    await clock.settle()
+  }
+
+  // Each fork answers the next of `replies`; the last one repeats.
+  const setup = (on: On, replies: unknown[]) => {
+    const clock = mock.clock(on)
+    const forks: number[] = []
+    const lines: string[] = []
+    on('turn.complete', (_$, e) => ({ text: e.answer }))
+    on('model.fork', async () => {
+      const reply = replies[Math.min(forks.length, replies.length - 1)]
+      forks.push(forks.length)
+      return { value: reply as never }
+    })
+    on('ui.log', ($, e, next) => (lines.push(e.text), next(e)))
+    return { clock, forks, lines }
+  }
+
+  test('each warm refresh pushes the expiry an hour past itself', { options: { keepwarm: 'on' } }, async ($, on) => {
+    const { clock, forks, lines } = setup(on, [warmReply])
+    await $.turn.complete(TURN)
+    await advance(clock, 50 * MIN)
+    expect(forks).toHaveLength(1)
+    // Each refresh comes 50 minutes after the last and moves the expiry on: 100 min, then 150 min, so 210 min.
+    await advance(clock, 50 * MIN)
+    expect(forks).toHaveLength(2)
+    await advance(clock, 50 * MIN)
+    expect(forks).toHaveLength(3)
+    await advance(clock, 60 * MIN - 1000)
+    expect(lines).toEqual([])
+    await advance(clock, 1000)
+    expect(lines).toHaveLength(1)
+    expect(lines[0]).toMatch(/^✻ Prompt cache expired at /)
+  })
+
+  test('a cold refresh says so at once, then the reply has re-warmed the cache', { options: { keepwarm: 'on' } }, async ($, on) => {
+    const { clock, forks, lines } = setup(on, [coldReply, warmReply])
+    await $.turn.complete(TURN)
+    await advance(clock, 50 * MIN)
+    expect(lines).toHaveLength(1)
+    // The cold reply rewrote the cache, so the next refresh is warm and prints nothing more.
+    await advance(clock, 50 * MIN)
+    expect(forks).toHaveLength(2)
+    expect(lines).toHaveLength(1)
+  })
+
+  test('stops refreshing after three warm refreshes', { options: { keepwarm: 'on' } }, async ($, on) => {
+    const { clock, forks } = setup(on, [warmReply])
+    await $.turn.complete(TURN)
+    await advance(clock, 5 * 60 * MIN)
+    expect(forks).toHaveLength(3)
+  })
+
+  test('sends nothing when keepwarm is off', async ($, on) => {
+    const { clock, forks, lines } = setup(on, [warmReply])
+    await $.turn.complete(TURN)
+    await advance(clock, HOUR)
+    expect(forks).toEqual([])
+    expect(lines).toHaveLength(1)
+  })
+})
+
+describe('/keepalive', () => {
+  const MIN = 60 * 1000
+  const warmReply = { isAnswered: true, text: 'ok', usage: { input_tokens: 2, output_tokens: 1, cache_read_input_tokens: 200000, cache_creation_input_tokens: 0 } }
+  const setup = (on: On) => {
+    const clock = mock.clock(on)
+    const forks: number[] = []
+    on('turn.complete', (_$, e) => ({ text: e.answer }))
+    on('model.fork', async () => {
+      forks.push(forks.length)
+      return { value: warmReply as never }
+    })
+    return { clock, forks }
+  }
+  const run = ($: Engine, args: string) => $.command.run({ command: 'keepalive', args })
+
+  test('60 is minutes: a refresh at 50 minutes, one at the end, then nothing', async ($, on) => {
+    const { clock, forks } = setup(on)
+    await $.turn.complete(TURN)
+    const { text } = await run($, '60')
+    expect(text).toContain('keepalive on for 1h 0m')
+    await clock.advance(50 * MIN)
+    await clock.settle()
+    expect(forks).toHaveLength(1)
+    await clock.advance(10 * MIN)
+    await clock.settle()
+    expect(forks).toHaveLength(2)
+    await clock.advance(5 * 60 * MIN)
+    await clock.settle()
+    expect(forks).toHaveLength(2)
+  })
+
+  test('5h runs for five hours', async ($, on) => {
+    const { clock, forks } = setup(on)
+    await $.turn.complete(TURN)
+    expect((await run($, '5h')).text).toContain('keepalive on for 5h 0m')
+    await clock.advance(5 * 60 * MIN)
+    await clock.settle()
+    expect(forks).toHaveLength(6)
+  })
+
+  test('2h30m and 90m are read as durations', async ($, on) => {
+    setup(on)
+    await $.turn.complete(TURN)
+    expect((await run($, '2h30m')).text).toContain('for 2h 30m')
+    expect((await run($, '90m')).text).toContain('for 1h 30m')
+  })
+
+  test('no warning while the last turn is inside the one-hour cutoff', async ($, on) => {
+    const clock = mock.clock(on)
+    on('turn.complete', (_$, e) => ({ text: e.answer }))
+    await $.turn.complete(TURN)
+    await clock.advance(12 * MIN)
+    const { text } = await run($, '60')
+    expect(text).not.toContain('warning')
+    expect(text).toContain('keepalive on for 1h 0m')
+  })
+
+  test('warns, and does not start, once the last turn is past the one-hour cutoff', async ($, on) => {
+    const clock = mock.clock(on)
+    on('turn.complete', (_$, e) => ({ text: e.answer }))
+    await $.turn.complete(TURN)
+    await clock.advance(HOUR + MIN)
+    const { text } = await run($, '60')
+    expect(text).toContain('warning: the last turn was 61m 0s ago')
+    expect(text).not.toContain('keepalive on')
+  })
+
+  test('off stops the window', async ($, on) => {
+    const { clock, forks } = setup(on)
+    await $.turn.complete(TURN)
+    await run($, '60')
+    expect((await run($, 'off')).text).toContain('keepalive is off')
+    await clock.advance(50 * MIN)
+    await clock.settle()
+    expect(forks).toEqual([])
+  })
+
+  test('rejects text that is not a duration', async ($, on) => {
+    setup(on)
+    await $.turn.complete(TURN)
+    expect((await run($, 'soon')).text).toContain('is not a duration')
+    expect((await run($, '0')).text).toContain('is not a duration')
+  })
+
+  test('says so when no turn has run and there is no transcript', async ($, on) => {
+    mock.env(on, {})
+    setup(on)
+    expect((await run($, '60')).text).toContain('no turn has run')
+  })
+})
+
 describe('/cache-age', () => {
-  test('says so when no turn has finished', async ($, on) => {
+  test('says so when no turn has finished, and still reports keepalive and context', async ($, on) => {
     mock.clock(on)
+    on('session.usage', () => ({ value: { startedAt: 0, context: { window: 200000, tokens: 50000 }, rateLimits: [] } }))
     const { text } = await $.command.run({ command: 'cache-age', args: '' })
     expect(text).toMatch(/No turn has finished/)
+    expect(text).toContain('Keepalive:      off')
+    expect(text).toContain('Context:        50,000 of 200,000 tokens (25%)')
+  })
+
+  test('reports the keepalive window and the context size', async ($, on) => {
+    const MIN = 60 * 1000
+    const clock = mock.clock(on)
+    on('turn.complete', (_$, e) => ({ text: e.answer }))
+    on('model.fork', () => ({ value: { isAnswered: true, text: 'ok', usage: { input_tokens: 2, output_tokens: 1, cache_read_input_tokens: 200000, cache_creation_input_tokens: 0 } } as never }))
+    on('session.usage', () => ({ value: { startedAt: 0, context: { window: 200000, tokens: 120000 }, rateLimits: [] } }))
+    await $.turn.complete(TURN)
+    await $.command.run({ command: 'keepalive', args: '2h' })
+    await clock.advance(10 * MIN)
+    const { text } = await $.command.run({ command: 'cache-age', args: '' })
+    expect(text).toContain('Keepalive:      on until')
+    expect(text).toContain('(1h 50m left)')
+    expect(text).toContain('Context:        120,000 of 200,000 tokens (60%)')
   })
 
   test('reports the age and the time left, then the time since expiry', async ($, on) => {
     const clock = mock.clock(on)
+    on('session.usage', () => ({ value: { startedAt: 0, context: { window: 200000, tokens: 1000 }, rateLimits: [] } }))
     on('turn.complete', (_$, e) => ({ text: e.answer }))
     await $.turn.complete(TURN)
     await clock.advance(12 * 60 * 1000)

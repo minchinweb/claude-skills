@@ -4,6 +4,10 @@ A fork of [readable-layout](https://github.com/GarvitNangru/claude-code-mods/tre
 
 Two additions to the original: the end-of-turn rule shows the clock time at the right, and the plugin watches the prompt cache. An hour after the last turn (a subscription's cache lifetime) it adds a `✻ Prompt cache expired at …` rule to the transcript if the session is still open, and `/cache-age` shows when the last turn ended and when the cache expires.
 
+The `keepwarm` option (off by default) sends a one-word refresh 50 minutes after each turn, up to three times, using a fork over the session's transcript, the same call cache-tax uses. Each reply's usage says whether the cache was still warm: a warm reply pushes the expiry an hour on, and a cold one prints the expiry rule at once. Each refresh costs tokens, and a refresh that finds the cache cold rewrites it, so leave this off for short sessions. With it off, the rule is only an estimate from the last turn.
+
+`/keepalive` runs the same refresh through a window of time: `/keepalive 60` (minutes) or `/keepalive 5h` or `/keepalive 2h30m`. It refreshes 50 minutes after the last warm moment, every 50 minutes after that, and once more at the end of the window. `/keepalive off` stops it, and `/keepalive` alone shows whether it is running. `/cache-age` also shows the keepalive state and the context size. Before it starts, it reads the last turn (from this session, or else the transcript file's last write). If that was more than an hour ago the cache has lapsed, so it warns and does not start, because a refresh would then rewrite the whole context.
+
 The settings are the same: `boxes` (`answers` or `all`) and `bold` (`color`, `highlight` or `off`). Config key is `readable-layout-plain`.
 
 ---
