@@ -44,16 +44,26 @@ width=${COLUMNS:-}
 case "$width" in '' | *[!0-9]*) width=120 ;; esac
 width=$((width - 4)) # margin for the UI's own padding
 
+# Model colour: Haiku cyan, Sonnet yellow, Opus magenta, Fable bright blue, anything else white
+case "$model" in
+    *[Hh]aiku*) mc=36 ;;
+    *[Ss]onnet*) mc=33 ;;
+    *[Oo]pus*) mc=35 ;;
+    *[Ff]able*) mc=94 ;;
+    *) mc=37 ;;
+esac
+esc=$(printf '\033')
+
 # Everything except the directory
 tail=""
 [ -n "$branch" ] && tail="$tail | $gi $branch"
-tail="$tail | $model"
+tail="$tail | ${esc}[${mc}m$model${esc}[0m"
 [ -n "$ctx" ] && tail="$tail | ctx $(printf '%.0f' "$ctx")%"
 [ -n "$five" ] && tail="$tail | session: $(printf '%.0f' "$five")%"
 [ -n "$week" ] && tail="$tail | week: $(printf '%.0f' "$week")%${week_days:+ (${week_days}d)}"
 
-# Characters, not bytes (the icons are multibyte)
-chars() { printf '%s' "$1" | wc -m | tr -d ' '; }
+# Characters, not bytes (the icons are multibyte); colour codes take no room
+chars() { printf '%s' "$1" | sed "s/${esc}\[[0-9;]*m//g" | wc -m | tr -d ' '; }
 
 # Space left for the directory: line width minus "<icon> " and the tail
 rc_len=0

@@ -1,6 +1,8 @@
 Changelog
 =========
 
+- :feature:`-` ``statusline`` script: the model name is colour coded (Haiku
+  cyan, Sonnet yellow, Opus magenta, Fable bright blue, anything else white).
 - :feature:`-` ``statusline`` script: the week figure shows the days until the
   weekly limit resets, e.g. ``week: 18% (6d)``.
 - :feature:`-` ``dependabot`` plugin: ``alerts`` skill reads a repo's open
