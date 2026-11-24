@@ -2,7 +2,7 @@
 name: commit
 description: Commit with a generated message, like Cursor's /commit. Commits what's staged, or with nothing staged, only the files and hunks Claude changed this session; writes a 🤖-prefixed message in the style of the repo's recent commits. Use when the user says "commit", "commit this", "write a commit message", or types /commit.
 argument-hint: "[hint for the message]"
-allowed-tools: Bash(git status:*), Bash(git diff:*), Bash(git log:*), Bash(git add:*), Bash(git apply:*), Bash(git commit:*), Bash(git branch:*), Bash(git switch:*)
+allowed-tools: Bash(git status:*), Bash(git diff:*), Bash(git log:*), Bash(git add:*), Bash(git apply:*), Bash(git commit:*), Bash(git branch:*), Bash(git switch:*), Bash(python:*)
 ---
 
 # Commit the current changes (`/git:commit`)
@@ -53,19 +53,36 @@ ask for approval of the message first; the user asked for a commit.
    - Use the hint in `$ARGUMENTS`, if any, for intent the diff can't show.
    - End with any attribution lines the session asks for.
 
-4. **Commit**, passing the message through a heredoc so quoting survives:
+4. **Lint the message.** Write it to a file in the scratchpad (e.g.
+   `commit-msg.txt`) and run:
 
    ```
-   git commit -F - <<'MSG'
-   <message>
-   MSG
+   python -I "${CLAUDE_SKILL_DIR}/scripts/message_linter.py" --message-file <file> --staged
    ```
+
+   Exit 4 (BLOCKER): fix the message and lint again. Exit 2 (warnings): fix
+   them if it's easy; they are style nudges, not rules. It checks the emoji
+   prefix, subject length (50 target, 72 limit), vague or non-imperative
+   subjects, a trailing full stop, and body shape. Don't mention the linter
+   in the message.
+
+5. **Commit** from that file:
+
+   ```
+   git commit -F <file>
+   ```
+
+   A plugin hook scans the staged changes for secrets (tokens, keys, `.env`
+   files, conflict markers) before any `git commit` runs, and blocks the
+   commit if it finds one. If it blocks, name what it found, unstage the file
+   or remove the value, and carry on. Never add a `.git-commit-allow` entry
+   to get past it unless the user asks; an entry needs a reason.
 
    If a hook fails, show its output. If the fix is in the staged changes
    (e.g. formatting), fix it, re-stage only those files and commit again.
    Never use `--no-verify` or `--amend` unless the user asks.
 
-5. **Report** the short hash and subject, and any changes left uncommitted.
+6. **Report** the short hash and subject, and any changes left uncommitted.
    Don't push.
 
 ## Branch guard
