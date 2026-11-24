@@ -14,24 +14,47 @@ Limit: a single command that runs `git add` and then `git commit` is scanned
 before the add happens, so newly added files in it are not seen. /git:commit
 stages in a separate call, so it is covered.
 """
+
 import json
 import os
+from pathlib import Path
 import re
 import subprocess
 import sys
-from pathlib import Path
 
-GATE = Path(__file__).resolve().parent.parent / "skills" / "commit" / "scripts" / "secret_gate.py"
-COMMIT = re.compile(r"(?:^|[;&|\n]\s*)git\s+(?:-[Cc]\s+\S+\s+|--\S+\s+)*commit\b([^;&|\n]*)")
+GATE = (
+    Path(__file__).resolve().parent.parent
+    / "skills"
+    / "commit"
+    / "scripts"
+    / "secret_gate.py"
+)
+COMMIT = re.compile(
+    r"(?:^|[;&|\n]\s*)git\s+(?:-[Cc]\s+\S+\s+|--\S+\s+)*commit\b([^;&|\n]*)"
+)
 ALL_FLAG = re.compile(r"\s(?:-[a-zA-Z]*a[a-zA-Z]*|--all)(?=\s|$)")
 # `cd <dir> && git commit ...`: the commit runs in <dir>, not in the session's cwd.
 CD = re.compile(r"(?:^|[;&|]\s*)cd\s+(?:\"([^\"]+)\"|'([^']+)'|(\S+))\s*(?:&&|;)")
-DIFF = ["diff", "--no-color", "--no-ext-diff", "--src-prefix=a/", "--dst-prefix=b/", "-U0"]
+DIFF = [
+    "diff",
+    "--no-color",
+    "--no-ext-diff",
+    "--src-prefix=a/",
+    "--dst-prefix=b/",
+    "-U0",
+]
 
 
 def run(args, cwd, stdin=None):
-    return subprocess.run(args, cwd=cwd, input=stdin, capture_output=True, text=True,
-                          encoding="utf-8", errors="replace")
+    return subprocess.run(
+        args,
+        cwd=cwd,
+        input=stdin,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+    )
 
 
 def main():
@@ -48,7 +71,9 @@ def main():
     cds = CD.findall(command[: match.end()])
     if cds:
         target = os.path.expandvars(os.path.expanduser(next(g for g in cds[-1] if g)))
-        candidate = target if Path(target).is_absolute() else str(Path(cwd or ".") / target)
+        candidate = (
+            target if Path(target).is_absolute() else str(Path(cwd or ".") / target)
+        )
         if Path(candidate).is_dir():
             cwd = candidate
 
@@ -58,8 +83,16 @@ def main():
         root = run(["git", "rev-parse", "--show-toplevel"], cwd)
         if root.returncode != 0:
             return 0
-        stdin = run(["git", *DIFF, "--cached"], cwd).stdout + run(["git", *DIFF], cwd).stdout
-        gate += ["--diff", "-", "--allow", str(Path(root.stdout.strip()) / ".git-commit-allow")]
+        stdin = (
+            run(["git", *DIFF, "--cached"], cwd).stdout
+            + run(["git", *DIFF], cwd).stdout
+        )
+        gate += [
+            "--diff",
+            "-",
+            "--allow",
+            str(Path(root.stdout.strip()) / ".git-commit-allow"),
+        ]
     result = run(gate, cwd, stdin)
     if result.returncode == 4:
         print(f"Commit blocked by the secret gate.\n\n{result.stdout}", file=sys.stderr)
@@ -71,7 +104,10 @@ if __name__ == "__main__":
     try:
         code = main()
     except Exception as exc:  # fail open: a crash must not block the commit
-        print(f"commit_guard: crashed ({type(exc).__name__}: {exc}); "
-              "this commit was NOT scanned for secrets", file=sys.stderr)
+        print(
+            f"commit_guard: crashed ({type(exc).__name__}: {exc}); "
+            "this commit was NOT scanned for secrets",
+            file=sys.stderr,
+        )
         code = 1  # non-blocking error: Claude Code shows this stderr to the user
     sys.exit(code)
