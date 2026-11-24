@@ -1,12 +1,8 @@
-import type { EngineInterface, Register, RenderElement, Timer } from 'claude-code'
+import type { EngineInterface, Register, RenderElement, SessionMessage, Timer } from 'claude-code'
 import { drawMarkdown, type Emphasis } from './markdown'
 
 const MIN_MS = 60 * 1000
 
-// Final answers seen, newest last, kept in the plugin store so a resumed session
-// still boxes them. Capped so the store stays small.
-const ANSWERS_KEY = 'answers'
-const MAX_ANSWERS = 300
 // A block that is only part of an answer must be at least this long to count, so a
 // short note ("Done.") is not boxed because some answer happens to contain it.
 const MIN_PART_CHARS = 40
@@ -22,12 +18,56 @@ const HINT = [
   'Use at most one or two per reply, and none when nothing needs flagging; leave routine progress and summaries as plain text.',
 ].join(' ')
 
+// Final answers of this conversation: read from the transcript, then added as each
+// turn ends. Nothing is saved outside the transcript itself. `loaded` is the read
+// of the transcript, once per plugin load (the first draw waits for it) and again
+// when a session starts.
+type Answers = { list: string[]; exact: Set<string>; loaded?: Promise<void> }
+
+function remember(a: Answers, found: readonly string[]): void {
+  for (const text of found) {
+    if (a.exact.has(text)) continue
+    a.list.push(text)
+    a.exact.add(text)
+  }
+}
+
+async function readTranscript(a: Answers, $: EngineInterface): Promise<void> {
+  const messages = await $.session.messages().catch(() => [] as SessionMessage[])
+  const before = a.list.length
+  remember(a, answersIn(messages))
+  if (a.list.length > before) $.ui.invalidate('ui.render')
+}
+
 // Is this block the turn's final answer, or the end or a long part of one?
-function isAnswer(text: string, answers: readonly string[], exact: ReadonlySet<string>): boolean {
+function isAnswer(text: string, a: Answers): boolean {
   const t = norm(text)
-  if (exact.has(t)) return true
+  if (a.exact.has(t)) return true
   if (t.length < MIN_PART_CHARS) return false
-  return answers.some(a => a.includes(t))
+  return a.list.some(x => x.includes(t))
+}
+
+// The final answer of every turn in a transcript: the text Claude wrote after its
+// last tool call, before the next user message (or the end). A user message that
+// only carries tool results is part of the turn, not the start of a new one.
+export function answersIn(messages: readonly SessionMessage[]): string[] {
+  const out: string[] = []
+  let tail: string[] = []
+  const close = () => {
+    const a = norm(tail.join('\n\n'))
+    if (a) out.push(a)
+    tail = []
+  }
+  for (const m of messages) {
+    if (m.role === 'user') {
+      if (!m.toolResults?.length) close()
+      continue
+    }
+    if (m.toolUses.length) tail = []
+    else if (m.text.trim()) tail.push(m.text)
+  }
+  close()
+  return out
 }
 
 const fmtDuration = (ms: number): string => {
@@ -180,12 +220,7 @@ export const register: Register = (on, options) => {
   const emphasis: Emphasis = options.bold === 'highlight' || options.bold === 'off' ? options.bold : 'color'
   const c: CacheState = { keepwarm: options.keepwarm === 'on', turnGen: 0, refreshes: 0 }
   const calloutHint = options.calloutHint !== 'off'
-  let answers: string[] = []
-  let exact = new Set<string>()
-  const remember = (list: string[]) => {
-    answers = list.slice(-MAX_ANSWERS)
-    exact = new Set(answers)
-  }
+  const answers: Answers = { list: [], exact: new Set() }
 
   on('prompt.context', async ($, e, next) => {
     const r = await next(e)
@@ -202,11 +237,7 @@ export const register: Register = (on, options) => {
   })
   on('turn.complete', async ($, e, next) => {
     if (e.agentId === undefined && e.reason === 'answer' && norm(e.answer)) {
-      const a = norm(e.answer)
-      if (!exact.has(a)) {
-        remember([...answers, a])
-        await $.store.set(ANSWERS_KEY, answers).catch(() => undefined)
-      }
+      remember(answers, [norm(e.answer)])
       // Redraw what is on screen, so the answer that just finished gets its box.
       $.ui.invalidate('ui.render')
     }
@@ -227,11 +258,10 @@ export const register: Register = (on, options) => {
   // /cache-age: how old the prompt cache is and when it runs out.
   // /keepalive: refresh the cache through a window of time, e.g. `/keepalive 60` or `/keepalive 5h`.
   on('session.start', async ($, e, next) => {
-    const stored = await $.store.get(ANSWERS_KEY).catch(() => undefined)
-    if (Array.isArray(stored)) {
-      remember([...stored.filter((a): a is string => typeof a === 'string'), ...answers])
-      $.ui.invalidate('ui.render')
-    }
+    answers.list = []
+    answers.exact = new Set()
+    answers.loaded = readTranscript(answers, $)
+    await answers.loaded
     await $.command.register({ name: 'cache-age', description: 'Show when the prompt cache last refreshed and when it expires' })
     await $.command.register({
       name: 'keepalive',
@@ -315,16 +345,17 @@ export const register: Register = (on, options) => {
     return framed(Box, Text, 'You', 'suggestion', <Text>{e.props.text.trim()}</Text>, e.viewport?.columns)
   })
 
-  on('ui.render', { component: 'AssistantMessage' }, ($, e, next) => {
+  on('ui.render', { component: 'AssistantMessage' }, async ($, e, next) => {
     const text = e.props.text.trim()
     if (e.surface !== 'terminal' || e.props.isSummary || !text) return next(e)
+    if (!boxesAll) await (answers.loaded ??= readTranscript(answers, $))
     const ui = $.ui.resolve(e)
     const { Box, Text } = ui
     const columns = Math.max(24, e.viewport?.columns ?? 80)
 
     // Only the turn's final answer gets the box. Text between tool calls is a note:
     // indented, in the normal text color, so it reads clearly without competing.
-    if (!boxesAll && !isAnswer(text, answers, exact)) {
+    if (!boxesAll && !isAnswer(text, answers)) {
       return (
         <Box flexDirection="row" marginTop={1} paddingLeft={2}>
           <Text color="subtle">{'· '}</Text>

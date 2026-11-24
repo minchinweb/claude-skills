@@ -79,10 +79,10 @@ export function drawMarkdown(ui: Ui, text: string, emphasis: Emphasis, columns =
 function drawAlert(ui: Ui, level: AlertLevel, body: string, emphasis: Emphasis, columns: number): RenderElement {
   const { Box, Text } = ui
   const { label, color } = ALERT_STYLE[level]
-  const width = Math.max(20, columns - ALERT_INDENT)
+  const width = Math.max(20, columns - 2 * ALERT_INDENT)
   const head = `── ${label} `
   return (
-    <Box flexDirection="column" paddingLeft={ALERT_INDENT}>
+    <Box flexDirection="column" paddingLeft={ALERT_INDENT} paddingRight={ALERT_INDENT}>
       <Text color={color} wrap="truncate-end">
         <Text bold>{head}</Text>
         {'─'.repeat(Math.max(0, width - head.length))}

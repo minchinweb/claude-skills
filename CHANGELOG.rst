@@ -1,6 +1,10 @@
 Changelog
 =========
 
+- :feature:`-` ``readable-layout-plain`` 0.6.1: finds earlier turns' final
+  answers by reading the session's transcript instead of keeping its own store,
+  so resumed sessions and transcripts from before 0.6.0 get the answer box too.
+  Callouts are now indented on both sides.
 - :feature:`-` ``readable-layout-plain`` 0.6.0: only each turn's final answer
   gets the Claude box; text between tool calls is an indented note in the
   normal text color (no longer dimmed); ``> [!NOTE]``-style alert blocks draw

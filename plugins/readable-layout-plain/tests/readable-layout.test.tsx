@@ -1,6 +1,6 @@
 import { describe, expect, mock, test } from 'claude-code/testing'
 import type { Engine, MockClock } from 'claude-code/testing'
-import type { On, PromptOrigin } from 'claude-code'
+import type { On, PromptOrigin, SessionMessage } from 'claude-code'
 
 const ANSWER = 'Both are done.\n\n- **Agent Monitor** is pushed\n- **Ember** is applied'
 const PLAIN_ANSWER = 'Both are done.\n\n- Agent Monitor is pushed\n- Ember is applied'
@@ -8,7 +8,7 @@ const NOTE = 'Checking the config first:'
 const ACCENT = { bold: true, color: 'cyan_FOR_SUBAGENTS_ONLY' }
 const PLUGIN = 'readable-layout'
 
-function engineBeneath(on: On, stored: Record<string, unknown> = {}): void {
+function engineBeneath(on: On, transcript: SessionMessage[] = []): void {
   on('ui.render', { component: 'AssistantMessage' }, ($, e) => {
     const { Text } = $.ui.resolve(e)
     return <Text>engine: {e.props.text}</Text>
@@ -24,7 +24,7 @@ function engineBeneath(on: On, stored: Record<string, unknown> = {}): void {
   on('turn.complete', (_$, e) => ({ text: e.answer }))
   on('prompt.context', (_$, e) => ({ blocks: e.blocks }))
   on('session.start', (_$, e) => ({ cwd: e.cwd }))
-  mock.store(on, stored)
+  on('session.messages', () => ({ value: transcript }))
 }
 
 const mountReply = ($: Engine, surface: 'terminal' | 'desktop', text: string, isSummary?: true) =>
@@ -113,9 +113,26 @@ describe("Claude's text", () => {
     expect(await (await mountReply($, 'terminal', 'Done.')).find({ type: 'Text', text: /── Claude/ })).toBeUndefined()
   })
 
-  test('answers from earlier sessions are read back from the store', async ($, on) => {
-    engineBeneath(on, { answers: [PLAIN_ANSWER] })
+  test("a resumed transcript's final answers are boxed, its notes are not", async ($, on) => {
+    const tool = { id: 't', name: 'Read', input: {} }
+    const transcript = [
+      { role: 'user', text: 'fix it', toolUses: [] },
+      { role: 'assistant', text: NOTE, toolUses: [tool] },
+      { role: 'user', text: '', toolUses: [], toolResults: [{ toolUseId: 't' }] },
+      { role: 'assistant', text: PLAIN_ANSWER, toolUses: [] },
+      { role: 'user', text: 'thanks', toolUses: [] },
+      { role: 'assistant', text: 'You are welcome, glad it is all working now.', toolUses: [] },
+    ] as unknown as SessionMessage[]
+    engineBeneath(on, transcript)
     await $.session.start({ cwd: '.', surface: 'terminal', isInteractive: true })
+    const boxed = async (text: string) => (await (await mountReply($, 'terminal', text)).find({ type: 'Text', text: /── Claude/ })) !== undefined
+    expect(await boxed(PLAIN_ANSWER)).toBe(true)
+    expect(await boxed('You are welcome, glad it is all working now.')).toBe(true)
+    expect(await boxed(NOTE)).toBe(false)
+  })
+
+  test('the transcript is read on the first draw, without a session start', async ($, on) => {
+    engineBeneath(on, [{ role: 'assistant', text: PLAIN_ANSWER, toolUses: [] }] as unknown as SessionMessage[])
     const ui = await mountReply($, 'terminal', PLAIN_ANSWER)
     expect(await ui.find({ type: 'Text', text: /── Claude/ })).toBeDefined()
   })
@@ -226,7 +243,8 @@ describe('callouts', () => {
     const ui = await mountAnswer($, WARN, 60)
     const head = await ui.find({ type: 'Text', text: /^── Warning ─+$/ })
     expect(head?.props).toMatchObject({ color: 'warning' })
-    expect(head?.text.length).toBe(58)
+    expect(head?.text.length).toBe(56)
+    expect((await ui.findAll({ type: "Box" })).find(b => b.props.paddingLeft === 2 && b.props.paddingRight === 2)).toBeDefined()
     expect(await strongTexts(ui)).toEqual(['token'])
     expect(await ui.find({ type: 'Text', text: /Renew it first/ })).toBeDefined()
     expect((await ui.findAll({ type: 'Markdown' })).map(m => m.text)).toEqual(['All set.', 'That is all.'])
