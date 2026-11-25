@@ -1,10 +1,13 @@
 Changelog
 =========
 
+- :feature:`-` ``readable-layout-plain`` 0.6.3: the end-of-turn rule shows
+  when its turn ended, not the time it was last drawn; a rule whose turn end is
+  not known shows no clock. A resumed session's rules get their times from the
+  transcript (``hooks/stamps.py`` reads the ``turn_duration`` entries).
 - :feature:`-` ``readable-layout-plain`` 0.6.2: the You and Claude boxes show
   the time at the right of their top rule: when the prompt was sent, when the
-  answer ended, and the end-of-turn rule shows when its turn ended (not when it
-  was last drawn). Times for a resumed session come from its transcript file, read
+  answer ended. Times for a resumed session come from its transcript file, read
   by ``hooks/stamps.py`` (needs Python); the cache clock, ``/cache-age`` and
   ``/keepalive`` start from the transcript's last turn too. Each cache refresh
   prints a ``Keeping the prompt cache warm at`` status line.

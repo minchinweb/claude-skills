@@ -1,6 +1,6 @@
 {
   "name": "readable-layout-plain",
-  "version": "0.6.2",
+  "version": "0.6.3",
   "description": "Readable Layout with no side bars: your messages and Claude's final answer sit between full-width top and bottom rules, Claude's work between tool calls is indented notes, alert blocks are colored callouts, bold text is in color, and a rule ends every turn. Forked from garvit-mods readable-layout.",
   "author": {
     "name": "William Minchin"
