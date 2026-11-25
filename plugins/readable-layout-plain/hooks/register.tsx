@@ -22,7 +22,8 @@ const HINT = [
 // turn ends. Nothing is saved outside the transcript itself. `loaded` is the read
 // of the transcript, once per plugin load (the first draw waits for it) and again
 // when a session starts.
-type Answers = { list: string[]; exact: Set<string>; loaded?: Promise<void> }
+// `at` holds when each answer ended, for the answers this session saw end. `stamps` and `last` come from the transcript file, read by stamps.py: when each text was written, and when the last turn ended.
+type Answers = { list: string[]; exact: Set<string>; at: Map<string, number>; stamps: Map<string, number>; last?: number; loaded?: Promise<void> }
 
 function remember(a: Answers, found: readonly string[]): void {
   for (const text of found) {
@@ -36,6 +37,11 @@ async function readTranscript(a: Answers, $: EngineInterface): Promise<void> {
   const messages = await $.session.messages().catch(() => [] as SessionMessage[])
   const before = a.list.length
   remember(a, answersIn(messages))
+  const found = await readStamps($, messages.map(m => norm(m.text)).filter(Boolean))
+  if (found) {
+    for (const [text, at] of Object.entries(found.stamps)) a.stamps.set(text, at)
+    a.last = found.last ?? undefined
+  }
   if (a.list.length > before) $.ui.invalidate('ui.render')
 }
 
@@ -92,6 +98,7 @@ const fmtClock = (d: Date): string => {
 // A subscription's prompt cache lives for an hour after the last request.
 const CACHE_TTL_MS = 60 * 60 * 1000
 const CACHE_EXPIRED = '✻ Prompt cache expired at'
+const KEEPING_WARM = '✻ Keeping the prompt cache warm at'
 // keepwarm: refresh this long after the last warm moment, before the cache can lapse.
 const REFRESH_MS = 50 * 60 * 1000
 // keepwarm: most refreshes per break, so an open session does not ping forever.
@@ -126,10 +133,10 @@ function clearTimers(c: CacheState): void {
   c.refresh = undefined
 }
 
-// Called only at a warm moment, so the wait is always a full hour from now.
-function armExpiry(c: CacheState, $: EngineInterface, gen: number): void {
+// Called at a warm moment, so the wait is an hour from now unless a shorter one is given.
+function armExpiry(c: CacheState, $: EngineInterface, gen: number, delay = CACHE_TTL_MS): void {
   c.expiry?.cancel()
-  c.expiry = $.clock.after(CACHE_TTL_MS, () => checkExpiry(c, $, gen))
+  c.expiry = $.clock.after(delay, () => checkExpiry(c, $, gen))
 }
 
 // Print only if the cache really is due: a warm refresh or a new turn since this
@@ -155,6 +162,7 @@ function refreshDelay(c: CacheState, now: number): number {
 async function sendRefresh(c: CacheState, $: EngineInterface, gen: number): Promise<void> {
   c.refresh = undefined
   if (gen !== c.turnGen) return
+  $.ui.log(`${KEEPING_WARM} ${fmtClock(new Date(await $.clock.now()))}`)
   const reply = await $.model.fork({ prompt: PROBE_PROMPT, effort: 'low' })
   const at = await $.clock.now()
   // A turn started while the refresh was out; its own turn.complete owns the wait now.
@@ -184,16 +192,54 @@ async function sendRefresh(c: CacheState, $: EngineInterface, gen: number): Prom
   }
 }
 
-// The transcript file's last write, which is the last turn's end. The session's file
-// lives under ~/.claude/projects, in a folder named after its working directory.
-async function transcriptMtime($: EngineInterface): Promise<number | undefined> {
+// The session's transcript file. It lives under ~/.claude/projects, in a folder named after its working directory.
+async function transcriptPath($: EngineInterface): Promise<string | undefined> {
   const home = (await $.env.get('USERPROFILE')) ?? (await $.env.get('HOME'))
   if (!home) return undefined
   const cwd = await $.session.cwd()
   const folder = cwd.replace(/[^A-Za-z0-9]/g, '-')
   const id = await $.session.id()
-  const stat = await $.fs.stat(`${home}/.claude/projects/${folder}/${id}.jsonl`).catch(() => undefined)
+  return `${home}/.claude/projects/${folder}/${id}.jsonl`
+}
+
+// The transcript file's last write, which is the last turn's end. Used only when stamps.py cannot run.
+async function transcriptMtime($: EngineInterface): Promise<number | undefined> {
+  const path = await transcriptPath($)
+  if (!path) return undefined
+  const stat = await $.fs.stat(path).catch(() => undefined)
   return stat?.mtimeMs
+}
+
+// When each of `texts` was written, and when the last turn ended, read by stamps.py from the transcript.
+// Python is tried as `python`, then `python3` (Linux), then `py -3`. Undefined when none of them can read it.
+async function readStamps($: EngineInterface, texts: string[]): Promise<{ stamps: Record<string, number>; last: number | null } | undefined> {
+  if (!texts.length) return undefined
+  try {
+    const path = await transcriptPath($)
+    if (!path) return undefined
+    const script = `${$.plugin.root}/hooks/stamps.py`
+    const stdin = JSON.stringify({ texts })
+    for (const argv of [['python', script, path], ['python3', script, path], ['py', '-3', script, path]]) {
+      const r = await $.process.run(argv, { stdin, timeoutMs: 60 * 1000 }).catch(() => undefined)
+      if (!r || r.exitCode !== 0) continue
+      return JSON.parse(r.stdout)
+    }
+  } catch {
+    // Not readable here: the boxes and the cache clock fall back to this session's own times.
+  }
+  return undefined
+}
+
+// A resumed session has no turn of its own yet. The transcript's last turn is the last warm moment, so the cache clock starts there:
+// the expiry line is due an hour after it, and keepwarm refreshes 50 minutes after it.
+async function seedCache(c: CacheState, $: EngineInterface, last: number | undefined): Promise<void> {
+  if (last === undefined || c.lastTurnAt !== undefined) return
+  const now = await $.clock.now()
+  c.lastTurnAt = last
+  c.expiresAt = last + CACHE_TTL_MS
+  if (c.expiresAt <= now) return
+  armExpiry(c, $, c.turnGen, c.expiresAt - now)
+  if (c.keepwarm) armRefresh(c, $, c.turnGen, Math.max(0, last + REFRESH_MS - now))
 }
 
 // `60` is minutes; `90m`, `5h` and `2h30m` work too. Undefined when it is none of these.
@@ -220,7 +266,9 @@ export const register: Register = (on, options) => {
   const emphasis: Emphasis = options.bold === 'highlight' || options.bold === 'off' ? options.bold : 'color'
   const c: CacheState = { keepwarm: options.keepwarm === 'on', turnGen: 0, refreshes: 0 }
   const calloutHint = options.calloutHint !== 'off'
-  const answers: Answers = { list: [], exact: new Set() }
+  const answers: Answers = { list: [], exact: new Set(), at: new Map(), stamps: new Map() }
+  // When each prompt entered this session. Keyed by text, so a repeated prompt shows the time of its latest send.
+  const sent = new Map<string, number>()
 
   on('prompt.context', async ($, e, next) => {
     const r = await next(e)
@@ -228,6 +276,11 @@ export const register: Register = (on, options) => {
     return { ...r, blocks: [...r.blocks, { name: HINT_BLOCK, text: HINT }] }
   })
 
+  on('prompt.submit', async ($, e, next) => {
+    const r = await next(e)
+    sent.set(norm(r.text), await $.clock.now())
+    return r
+  })
   on('turn.start', ($, e, next) => {
     if (e.agentId === undefined) {
       c.turnGen++
@@ -237,7 +290,9 @@ export const register: Register = (on, options) => {
   })
   on('turn.complete', async ($, e, next) => {
     if (e.agentId === undefined && e.reason === 'answer' && norm(e.answer)) {
-      remember(answers, [norm(e.answer)])
+      const text = norm(e.answer)
+      answers.at.set(text, await $.clock.now())
+      remember(answers, [text])
       // Redraw what is on screen, so the answer that just finished gets its box.
       $.ui.invalidate('ui.render')
     }
@@ -260,8 +315,13 @@ export const register: Register = (on, options) => {
   on('session.start', async ($, e, next) => {
     answers.list = []
     answers.exact = new Set()
+    answers.at = new Map()
+    answers.stamps = new Map()
+    answers.last = undefined
+    sent.clear()
     answers.loaded = readTranscript(answers, $)
     await answers.loaded
+    await seedCache(c, $, answers.last)
     await $.command.register({ name: 'cache-age', description: 'Show when the prompt cache last refreshed and when it expires' })
     await $.command.register({
       name: 'keepalive',
@@ -339,16 +399,18 @@ export const register: Register = (on, options) => {
     )
   })
 
-  on('ui.render', { component: 'UserMessage' }, ($, e, next) => {
+  on('ui.render', { component: 'UserMessage' }, async ($, e, next) => {
     if (e.surface !== 'terminal' || e.props.origin.kind !== 'composer' || !e.props.text.trim()) return next(e)
+    await (answers.loaded ??= readTranscript(answers, $))
     const { Box, Text } = $.ui.resolve(e)
-    return framed(Box, Text, 'You', 'suggestion', <Text>{e.props.text.trim()}</Text>, e.viewport?.columns)
+    const key = norm(e.props.text)
+    return framed(Box, Text, 'You', 'suggestion', <Text>{e.props.text.trim()}</Text>, e.viewport?.columns, sent.get(key) ?? answers.stamps.get(key))
   })
 
   on('ui.render', { component: 'AssistantMessage' }, async ($, e, next) => {
     const text = e.props.text.trim()
     if (e.surface !== 'terminal' || e.props.isSummary || !text) return next(e)
-    if (!boxesAll) await (answers.loaded ??= readTranscript(answers, $))
+    await (answers.loaded ??= readTranscript(answers, $))
     const ui = $.ui.resolve(e)
     const { Box, Text } = ui
     const columns = Math.max(24, e.viewport?.columns ?? 80)
@@ -363,7 +425,8 @@ export const register: Register = (on, options) => {
         </Box>
       )
     }
-    return framed(Box, Text, 'Claude', 'claude', drawMarkdown(ui, text, emphasis, columns), columns)
+    const key = norm(text)
+    return framed(Box, Text, 'Claude', 'claude', drawMarkdown(ui, text, emphasis, columns), columns, answers.at.get(key) ?? answers.stamps.get(key))
   })
 
   on('ui.render', { component: 'TurnDuration' }, ($, e, next) => {
@@ -401,10 +464,15 @@ function framed(
   color: string,
   body: RenderElement,
   columns = 80,
+  at?: number,
 ): RenderElement {
   const width = Math.max(24, columns)
   const head = `── ${title} `
-  const tail = '─'.repeat(Math.max(0, width - head.length))
+  // With a time, it sits at the right of the top rule, as the end-of-turn rule's does.
+  const stamp = at === undefined ? '' : ` ${fmtClock(new Date(at))} `
+  const tail = stamp
+    ? '─'.repeat(Math.max(0, width - head.length - stamp.length - 2)) + stamp + '──'
+    : '─'.repeat(Math.max(0, width - head.length))
   const rule = '─'.repeat(width)
   return (
     <Box flexDirection="column" marginTop={1}>

@@ -8,7 +8,11 @@ const NOTE = 'Checking the config first:'
 const ACCENT = { bold: true, color: 'cyan_FOR_SUBAGENTS_ONLY' }
 const PLUGIN = 'readable-layout'
 
+// Every turn ends at 09:05 AM local time.
+const ENDED = new Date(2026, 10, 25, 9, 5).getTime()
+
 function engineBeneath(on: On, transcript: SessionMessage[] = []): void {
+  on('clock.now', () => ({ value: ENDED }))
   on('ui.render', { component: 'AssistantMessage' }, ($, e) => {
     const { Text } = $.ui.resolve(e)
     return <Text>engine: {e.props.text}</Text>
@@ -22,6 +26,7 @@ function engineBeneath(on: On, transcript: SessionMessage[] = []): void {
     return <Text>engine: {e.props.word}</Text>
   })
   on('turn.complete', (_$, e) => ({ text: e.answer }))
+  on('prompt.submit', (_$, e) => ({ text: e.text }))
   on('prompt.context', (_$, e) => ({ blocks: e.blocks }))
   on('session.start', (_$, e) => ({ cwd: e.cwd }))
   on('session.messages', () => ({ value: transcript }))
@@ -62,6 +67,14 @@ describe('your messages', () => {
     expect(await ui.find(fromEngine)).toBeUndefined()
   })
 
+  test('the box is labeled with the time the prompt was sent, at the right of its top rule', async ($, on) => {
+    engineBeneath(on)
+    await $.prompt.submit({ text: 'fix the login bug' })
+    const ui = await mountPrompt($, 'terminal', 'fix the login bug')
+    const rule = (await ui.find({ type: 'Text', text: /── You/ }))?.text ?? ''
+    expect(rule).toMatch(/^── You ─+ 09:05 AM ──$/)
+  })
+
   test('leave notifications, other senders and other surfaces to the engine', async ($, on) => {
     engineBeneath(on)
     const mounts = [
@@ -79,6 +92,14 @@ describe("Claude's text", () => {
     expect((await ui.find({ type: 'Text', text: /── Claude/ }))?.props).toMatchObject({ color: 'claude' })
     expect((await ui.findAll({ type: 'Box' })).some(b => b.props.borderStyle)).toBe(false)
     expect((await ui.find({ type: 'Markdown' }))?.text).toBe(PLAIN_ANSWER)
+  })
+
+  test('the box is labeled with the time the answer ended, at the right of its top rule', async ($, on) => {
+    engineBeneath(on)
+    const ui = await mountAnswer($, PLAIN_ANSWER, 60)
+    const rule = (await ui.find({ type: 'Text', text: /── Claude/ }))?.text ?? ''
+    expect(rule).toMatch(/^── Claude ─+ 09:05 AM ──$/)
+    expect(rule.length).toBe(60)
   })
 
   test('text between tool calls is an indented note in the normal text color', async ($, on) => {
@@ -364,6 +385,7 @@ describe('prompt cache expiry', () => {
 
 describe('keepwarm', () => {
   const MIN = 60 * 1000
+  const expiredLines = (lines: string[]) => lines.filter(l => l.startsWith('✻ Prompt cache expired'))
   const warmReply = { isAnswered: true, text: 'ok', usage: { input_tokens: 2, output_tokens: 1, cache_read_input_tokens: 200000, cache_creation_input_tokens: 0 } }
   const coldReply = { isAnswered: true, text: 'ok', usage: { input_tokens: 2, output_tokens: 1, cache_read_input_tokens: 0, cache_creation_input_tokens: 200000 } }
 
@@ -399,21 +421,28 @@ describe('keepwarm', () => {
     await advance(clock, 50 * MIN)
     expect(forks).toHaveLength(3)
     await advance(clock, 60 * MIN - 1000)
-    expect(lines).toEqual([])
+    expect(expiredLines(lines)).toEqual([])
     await advance(clock, 1000)
-    expect(lines).toHaveLength(1)
-    expect(lines[0]).toMatch(/^✻ Prompt cache expired at /)
+    expect(expiredLines(lines)).toHaveLength(1)
+    expect(expiredLines(lines)[0]).toMatch(/^✻ Prompt cache expired at /)
+  })
+
+  test('each refresh prints a status line with the time it kept the cache warm', { options: { keepwarm: 'on' } }, async ($, on) => {
+    const { clock, lines } = setup(on, [warmReply])
+    await $.turn.complete(TURN)
+    await advance(clock, 50 * MIN)
+    expect(lines).toEqual([expect.stringMatching(/^✻ Keeping the prompt cache warm at \d\d:\d\d (AM|PM)$/)])
   })
 
   test('a cold refresh says so at once, then the reply has re-warmed the cache', { options: { keepwarm: 'on' } }, async ($, on) => {
     const { clock, forks, lines } = setup(on, [coldReply, warmReply])
     await $.turn.complete(TURN)
     await advance(clock, 50 * MIN)
-    expect(lines).toHaveLength(1)
-    // The cold reply rewrote the cache, so the next refresh is warm and prints nothing more.
+    expect(expiredLines(lines)).toHaveLength(1)
+    // The cold reply rewrote the cache, so the next refresh is warm and prints no expiry line.
     await advance(clock, 50 * MIN)
     expect(forks).toHaveLength(2)
-    expect(lines).toHaveLength(1)
+    expect(expiredLines(lines)).toHaveLength(1)
   })
 
   test('stops refreshing after three warm refreshes', { options: { keepwarm: 'on' } }, async ($, on) => {
@@ -561,5 +590,51 @@ describe('/cache-age', () => {
     ;({ text } = await $.command.run({ command: 'cache-age', args: '' }))
     expect(text).toContain('Cache expired:')
     expect(text).toContain('(12m 0s ago)')
+  })
+})
+
+describe('transcript times', () => {
+  const MIN = 60 * 1000
+  // Stands in for stamps.py: the stamp of each text asked for, and when the last turn ended.
+  const stampsPy = (on: On, stamps: Record<string, number>, last: number | null = null) =>
+    on('process.run', (_$, e) => {
+      const { texts } = JSON.parse(e.init?.stdin ?? '{}') as { texts: string[] }
+      const found = Object.fromEntries(texts.filter(t => t in stamps).map(t => [t, stamps[t]]))
+      return {
+        value: { exitCode: 0, stdout: JSON.stringify({ stamps: found, last }), stderr: '', isStdoutTruncated: false, isStderrTruncated: false } as never,
+      }
+    })
+  // The session's transcript file, so stamps.py would be run on it.
+  const sessionFile = (on: On) => {
+    on('session.cwd', () => ({ value: 'D:\\Code\\claude-skills' }))
+    on('session.id', () => ({ value: 'session-1' }))
+    mock.env(on, { USERPROFILE: 'C:\\Users\\me' })
+  }
+
+  test("a resumed transcript's prompts show when they were sent", async ($, on) => {
+    engineBeneath(on, [{ role: 'user', text: 'fix it', toolUses: [] }] as unknown as SessionMessage[])
+    sessionFile(on)
+    stampsPy(on, { 'fix it': ENDED - 60 * MIN })
+    await $.session.start({ cwd: '.', surface: 'terminal', isInteractive: true })
+    const ui = await mountPrompt($, 'terminal', 'fix it')
+    expect((await ui.find({ type: 'Text', text: /── You/ }))?.text).toMatch(/^── You ─+ 08:05 AM ──$/)
+  })
+
+  test("after a resume, the cache clock starts at the transcript's last turn", async ($, on) => {
+    const clock = mock.clock(on, { now: ENDED })
+    const lines: string[] = []
+    on('ui.log', ($, e, next) => (lines.push(e.text), next(e)))
+    on('session.usage', () => ({ value: { startedAt: 0, context: { window: 200000, tokens: 1000 }, rateLimits: [] } }))
+    on('session.messages', () => ({ value: [{ role: 'user', text: 'fix it', toolUses: [] }] }))
+    on('session.start', (_$, e) => ({ cwd: e.cwd }))
+    sessionFile(on)
+    stampsPy(on, { 'fix it': ENDED - 30 * MIN }, ENDED - 20 * MIN)
+    await $.session.start({ cwd: '.', surface: 'terminal', isInteractive: true })
+    const { text } = await $.command.run({ command: 'cache-age', args: '' })
+    expect(text).toMatch(/Last turn ended: \d\d:\d\d (AM|PM) \(20m 0s ago\)/)
+    expect(text).toContain('in 40m 0s')
+    await clock.advance(41 * MIN)
+    await clock.settle()
+    expect(lines.filter(l => l.startsWith('✻ Prompt cache expired at'))).toHaveLength(1)
   })
 })

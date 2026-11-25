@@ -2,9 +2,13 @@
 
 A fork of [readable-layout](https://github.com/GarvitNangru/claude-code-mods/tree/main/mods/readable-layout) by Garvit Nangru (MIT). The change: no side bars. Your messages and Claude's answers sit between full-width top and bottom rules with the label on the top rule, so copying text from the terminal picks up no box edges. Bold, quiet notes and the end-of-turn rule work as in the original.
 
-Two additions to the original: the end-of-turn rule shows the clock time at the right, and the plugin watches the prompt cache. An hour after the last turn (a subscription's cache lifetime) it adds a `✻ Prompt cache expired at …` rule to the transcript if the session is still open, and `/cache-age` shows when the last turn ended and when the cache expires.
+Three additions to the original: the end-of-turn rule and the top rules of your message and Claude's answer boxes show the clock time at the right, and the plugin watches the prompt cache. An hour after the last turn (a subscription's cache lifetime) it adds a `✻ Prompt cache expired at …` rule to the transcript if the session is still open, and `/cache-age` shows when the last turn ended and when the cache expires.
 
 The `keepwarm` option (off by default) sends a one-word refresh 50 minutes after each turn, up to three times, using a fork over the session's transcript, the same call cache-tax uses. Each reply's usage says whether the cache was still warm: a warm reply pushes the expiry an hour on, and a cold one prints the expiry rule at once. Each refresh costs tokens, and a refresh that finds the cache cold rewrites it, so leave this off for short sessions. With it off, the rule is only an estimate from the last turn.
+
+Times for a resumed session come from its transcript file. `hooks/stamps.py` reads that file line by line, so a long session is no problem, and the plugin runs it with `python`, `python3` or `py -3`. Without Python, or when the file cannot be read, the times fall back to this session's own turns.
+
+Each refresh, from `keepwarm` or `/keepalive`, first prints a quiet status line, `✻ Keeping the prompt cache warm at 10:50 AM`, so you can see it run.
 
 `/keepalive` runs the same refresh through a window of time: `/keepalive 60` (minutes) or `/keepalive 5h` or `/keepalive 2h30m`. It refreshes 50 minutes after the last warm moment, every 50 minutes after that, and once more at the end of the window. `/keepalive off` stops it, and `/keepalive` alone shows whether it is running. `/cache-age` also shows the keepalive state and the context size. Before it starts, it reads the last turn (from this session, or else the transcript file's last write). If that was more than an hour ago the cache has lapsed, so it warns and does not start, because a refresh would then rewrite the whole context.
 

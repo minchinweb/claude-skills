@@ -1,6 +1,12 @@
 Changelog
 =========
 
+- :feature:`-` ``readable-layout-plain`` 0.6.2: the You and Claude boxes show
+  the time at the right of their top rule: when the prompt was sent, when the
+  answer ended. Times for a resumed session come from its transcript file, read
+  by ``hooks/stamps.py`` (needs Python); the cache clock, ``/cache-age`` and
+  ``/keepalive`` start from the transcript's last turn too. Each cache refresh
+  prints a ``Keeping the prompt cache warm at`` status line.
 - :feature:`-` ``readable-layout-plain`` 0.6.1: finds earlier turns' final
   answers by reading the session's transcript instead of keeping its own store,
   so resumed sessions and transcripts from before 0.6.0 get the answer box too.
