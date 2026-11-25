@@ -1,12 +1,13 @@
 import json
 import os
+from pathlib import Path
 import subprocess
 import sys
 import tempfile
 import unittest
 
-HOOKS = os.path.join(os.path.dirname(__file__), "..", "hooks")
-sys.path.insert(0, HOOKS)
+HOOKS = Path(__file__).resolve().parent.parent / "hooks"
+sys.path.insert(0, str(HOOKS))
 
 import stamps  # noqa: E402
 
@@ -36,7 +37,7 @@ class ReadStamps(unittest.TestCase):
 
     def test_prompt_stamp_is_the_entry_timestamp(self):
         path = self.write([line("user", "2026-11-25T15:51:27.786Z", PROMPT)])
-        found, _ = stamps.read_stamps(path)
+        found, _, _ = stamps.read_stamps(path)
         self.assertEqual(found[PROMPT], stamps.epoch_ms("2026-11-25T15:51:27.786Z"))
 
     def test_answer_split_over_lines_is_joined_and_stamped_with_its_last_line(self):
@@ -56,7 +57,7 @@ class ReadStamps(unittest.TestCase):
                 ),
             ]
         )
-        found, last = stamps.read_stamps(path)
+        found, last, _ = stamps.read_stamps(path)
         self.assertEqual(found[ANSWER], stamps.epoch_ms("2026-11-25T15:52:05.000Z"))
         self.assertEqual(last, stamps.epoch_ms("2026-11-25T15:52:05.000Z"))
 
@@ -77,19 +78,39 @@ class ReadStamps(unittest.TestCase):
                 ),
             ]
         )
-        _, last = stamps.read_stamps(path)
+        _, last, _ = stamps.read_stamps(path)
         self.assertEqual(last, stamps.epoch_ms("2026-11-25T15:51:30.000Z"))
 
     def test_lines_that_are_not_json_are_skipped(self):
         path = self.write(
             ["not json", line("user", "2026-11-25T15:51:27.786Z", PROMPT)]
         )
-        found, _ = stamps.read_stamps(path)
+        found, _, _ = stamps.read_stamps(path)
         self.assertIn(PROMPT, found)
 
     def test_empty_file_has_no_last(self):
         path = self.write([])
-        self.assertEqual(stamps.read_stamps(path), ({}, None))
+        self.assertEqual(stamps.read_stamps(path), ({}, None, {}))
+
+
+class Turns(unittest.TestCase):
+    def test_turn_duration_entries_give_each_turns_end(self):
+        handle, path = tempfile.mkstemp(suffix=".jsonl")
+        with os.fdopen(handle, "w", encoding="utf-8") as f:
+            f.write(
+                json.dumps(
+                    {
+                        "type": "system",
+                        "subtype": "turn_duration",
+                        "durationMs": 95362,
+                        "timestamp": "2026-11-25T15:53:03.103Z",
+                    }
+                )
+                + "\n"
+            )
+        self.addCleanup(os.remove, path)
+        _, _, turns = stamps.read_stamps(path)
+        self.assertEqual(turns, {"95362": stamps.epoch_ms("2026-11-25T15:53:03.103Z")})
 
 
 class Command(unittest.TestCase):
@@ -100,7 +121,7 @@ class Command(unittest.TestCase):
         self.addCleanup(os.remove, path)
         request = json.dumps({"texts": [PROMPT, "never sent"]})
         out = subprocess.run(
-            [sys.executable, os.path.join(HOOKS, "stamps.py"), path],
+            [sys.executable, str(HOOKS / "stamps.py"), path],
             input=request,
             capture_output=True,
             text=True,
@@ -111,6 +132,7 @@ class Command(unittest.TestCase):
             {
                 "stamps": {PROMPT: stamps.epoch_ms("2026-11-25T15:51:27.786Z")},
                 "last": None,
+                "turns": {},
             },
         )
 

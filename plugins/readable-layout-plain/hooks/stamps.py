@@ -4,13 +4,15 @@ Usage: python stamps.py TRANSCRIPT < request.json
 
 The request is {"texts": [...]}. The transcript is the session's .jsonl file. It is
 read line by line, so its size does not matter. The reply, on standard output, is
-{"stamps": {text: epoch_ms}, "last": epoch_ms or null}: a stamp for each requested
-text that the transcript holds, and the time of its last assistant message, which is
-when the last turn ended.
+{"stamps": {text: epoch_ms}, "last": epoch_ms or null,
+ "turns": {duration_ms: epoch_ms}}: a stamp for each requested text that the
+transcript holds, the time of its last assistant message (when the last turn
+ended), and when each turn ended, keyed by its duration in milliseconds.
 """
 
 from datetime import datetime
 import json
+from pathlib import Path
 import sys
 
 
@@ -19,7 +21,7 @@ def norm(text):
 
 
 def epoch_ms(stamp):
-    return int(datetime.fromisoformat(stamp.replace("Z", "+00:00")).timestamp() * 1000)
+    return int(datetime.fromisoformat(stamp).timestamp() * 1000)
 
 
 def text_of(content):
@@ -36,12 +38,14 @@ def text_of(content):
 
 
 def read_stamps(path):
-    """Returns (stamps, last). An assistant message is split over several lines, one
-    block each, so its lines are joined by message id and stamped with the last one."""
+    """Returns (stamps, last, turns). An assistant message is split over several
+    lines, one block each, so its lines are joined by message id and stamped with
+    the last one."""
     prompts = {}
     answers = {}  # message id -> [parts, stamp]
+    turns = {}
     last = None
-    with open(path, encoding="utf-8") as f:
+    with Path(path).open(encoding="utf-8") as f:
         for line in f:
             try:
                 entry = json.loads(line)
@@ -49,6 +53,9 @@ def read_stamps(path):
                 continue
             kind = entry.get("type")
             stamp = entry.get("timestamp")
+            if kind == "system" and entry.get("subtype") == "turn_duration" and stamp:
+                turns[str(entry.get("durationMs"))] = epoch_ms(stamp)
+                continue
             if kind not in ("user", "assistant") or not stamp:
                 continue
             ms = epoch_ms(stamp)
@@ -69,16 +76,16 @@ def read_stamps(path):
     for parts, ms in answers.values():
         if parts:
             stamps[norm("\n\n".join(parts))] = ms
-    return stamps, last
+    return stamps, last, turns
 
 
 def main():
     texts = {
         norm(t) for t in json.load(sys.stdin).get("texts", []) if isinstance(t, str)
     }
-    stamps, last = read_stamps(sys.argv[1])
+    stamps, last, turns = read_stamps(sys.argv[1])
     found = {t: stamps[t] for t in texts if t in stamps}
-    json.dump({"stamps": found, "last": last}, sys.stdout)
+    json.dump({"stamps": found, "last": last, "turns": turns}, sys.stdout)
 
 
 if __name__ == "__main__":

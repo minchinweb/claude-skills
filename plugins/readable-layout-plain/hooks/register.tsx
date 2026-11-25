@@ -23,7 +23,8 @@ const HINT = [
 // of the transcript, once per plugin load (the first draw waits for it) and again
 // when a session starts.
 // `at` holds when each answer ended, for the answers this session saw end. `stamps` and `last` come from the transcript file, read by stamps.py: when each text was written, and when the last turn ended.
-type Answers = { list: string[]; exact: Set<string>; at: Map<string, number>; stamps: Map<string, number>; last?: number; loaded?: Promise<void> }
+// `turns` maps a turn's duration to when it ended, which is how a turn's rule finds its time.
+type Answers = { list: string[]; exact: Set<string>; at: Map<string, number>; stamps: Map<string, number>; turns: Map<number, number>; last?: number; loaded?: Promise<void> }
 
 function remember(a: Answers, found: readonly string[]): void {
   for (const text of found) {
@@ -40,6 +41,7 @@ async function readTranscript(a: Answers, $: EngineInterface): Promise<void> {
   const found = await readStamps($, messages.map(m => norm(m.text)).filter(Boolean))
   if (found) {
     for (const [text, at] of Object.entries(found.stamps)) a.stamps.set(text, at)
+    for (const [duration, at] of Object.entries(found.turns)) a.turns.set(Number(duration), at)
     a.last = found.last ?? undefined
   }
   if (a.list.length > before) $.ui.invalidate('ui.render')
@@ -212,7 +214,7 @@ async function transcriptMtime($: EngineInterface): Promise<number | undefined> 
 
 // When each of `texts` was written, and when the last turn ended, read by stamps.py from the transcript.
 // Python is tried as `python`, then `python3` (Linux), then `py -3`. Undefined when none of them can read it.
-async function readStamps($: EngineInterface, texts: string[]): Promise<{ stamps: Record<string, number>; last: number | null } | undefined> {
+async function readStamps($: EngineInterface, texts: string[]): Promise<{ stamps: Record<string, number>; last: number | null; turns: Record<string, number> } | undefined> {
   if (!texts.length) return undefined
   try {
     const path = await transcriptPath($)
@@ -266,7 +268,7 @@ export const register: Register = (on, options) => {
   const emphasis: Emphasis = options.bold === 'highlight' || options.bold === 'off' ? options.bold : 'color'
   const c: CacheState = { keepwarm: options.keepwarm === 'on', turnGen: 0, refreshes: 0 }
   const calloutHint = options.calloutHint !== 'off'
-  const answers: Answers = { list: [], exact: new Set(), at: new Map(), stamps: new Map() }
+  const answers: Answers = { list: [], exact: new Set(), at: new Map(), stamps: new Map(), turns: new Map() }
   // When each prompt entered this session. Keyed by text, so a repeated prompt shows the time of its latest send.
   const sent = new Map<string, number>()
 
@@ -298,6 +300,8 @@ export const register: Register = (on, options) => {
     }
     if (e.agentId === undefined) {
       const now = await $.clock.now()
+      answers.turns.set(e.durationMs, now)
+      $.ui.invalidate('ui.render')
       c.lastTurnAt = now
       c.lastRefreshAt = undefined
       c.refreshes = 0
@@ -317,6 +321,7 @@ export const register: Register = (on, options) => {
     answers.exact = new Set()
     answers.at = new Map()
     answers.stamps = new Map()
+    answers.turns = new Map()
     answers.last = undefined
     sent.clear()
     answers.loaded = readTranscript(answers, $)
@@ -429,13 +434,15 @@ export const register: Register = (on, options) => {
     return framed(Box, Text, 'Claude', 'claude', drawMarkdown(ui, text, emphasis, columns), columns, answers.at.get(key) ?? answers.stamps.get(key))
   })
 
-  on('ui.render', { component: 'TurnDuration' }, ($, e, next) => {
+  on('ui.render', { component: 'TurnDuration' }, async ($, e, next) => {
     if (e.surface !== 'terminal') return next(e)
+    await (answers.loaded ??= readTranscript(answers, $))
     const { Box, Text } = $.ui.resolve(e)
     const label = ` ✻ ${e.props.word} for ${fmtDuration(e.props.durationMs)} `
     const width = Math.max(24, e.viewport?.columns ?? 80)
-    // Wall clock on the right, like the PowerShell prompt.
-    const clock = ` ${fmtClock(new Date())} `
+    // When the turn ended, on the right, like the PowerShell prompt. No clock when that time is not known.
+    const ended = answers.turns.get(e.props.durationMs)
+    const clock = ended === undefined ? '' : ` ${fmtClock(new Date(ended))} `
     const fill = '─'.repeat(Math.max(0, width - label.length - clock.length - 4))
     return (
       <Box marginTop={1}>

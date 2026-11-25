@@ -307,8 +307,9 @@ describe('callout hint', () => {
 })
 
 describe('end of turn', () => {
-  test('draws a rule across the width with the time taken', async ($, on) => {
+  test('draws a rule across the width with the time taken and the time it ended', async ($, on) => {
     engineBeneath(on)
+    await $.turn.complete({ ...TURN, durationMs: 65_000 })
     const ui = await $.ui.mount({
       plugin: PLUGIN,
       surface: 'terminal',
@@ -318,7 +319,21 @@ describe('end of turn', () => {
     })
     const rule = (await ui.find({ type: 'Text' }))?.text ?? ''
     expect(rule.startsWith('── ✻ Baked for 1m 5s ──')).toBe(true)
-    expect(rule).toMatch(/ \d\d:\d\d (AM|PM) ──$/)
+    expect(rule).toMatch(/ 09:05 AM ──$/)
+    expect(rule.length).toBe(60)
+  })
+
+  test('a rule whose turn end is not known shows no time', async ($, on) => {
+    engineBeneath(on)
+    const ui = await $.ui.mount({
+      plugin: PLUGIN,
+      surface: 'terminal',
+      component: 'TurnDuration',
+      props: { word: 'Baked', durationMs: 12_000 },
+      viewport: { columns: 60, rows: 30 },
+    })
+    const rule = (await ui.find({ type: 'Text' }))?.text ?? ''
+    expect(rule).not.toMatch(/AM|PM/)
     expect(rule.length).toBe(60)
   })
 })
@@ -596,12 +611,12 @@ describe('/cache-age', () => {
 describe('transcript times', () => {
   const MIN = 60 * 1000
   // Stands in for stamps.py: the stamp of each text asked for, and when the last turn ended.
-  const stampsPy = (on: On, stamps: Record<string, number>, last: number | null = null) =>
+  const stampsPy = (on: On, stamps: Record<string, number>, last: number | null = null, turns: Record<string, number> = {}) =>
     on('process.run', (_$, e) => {
       const { texts } = JSON.parse(e.init?.stdin ?? '{}') as { texts: string[] }
       const found = Object.fromEntries(texts.filter(t => t in stamps).map(t => [t, stamps[t]]))
       return {
-        value: { exitCode: 0, stdout: JSON.stringify({ stamps: found, last }), stderr: '', isStdoutTruncated: false, isStderrTruncated: false } as never,
+        value: { exitCode: 0, stdout: JSON.stringify({ stamps: found, last, turns }), stderr: '', isStdoutTruncated: false, isStderrTruncated: false } as never,
       }
     })
   // The session's transcript file, so stamps.py would be run on it.
@@ -618,6 +633,21 @@ describe('transcript times', () => {
     await $.session.start({ cwd: '.', surface: 'terminal', isInteractive: true })
     const ui = await mountPrompt($, 'terminal', 'fix it')
     expect((await ui.find({ type: 'Text', text: /── You/ }))?.text).toMatch(/^── You ─+ 08:05 AM ──$/)
+  })
+
+  test("a resumed transcript's turn rules show when each turn ended", async ($, on) => {
+    engineBeneath(on, [{ role: 'user', text: 'fix it', toolUses: [] }] as unknown as SessionMessage[])
+    sessionFile(on)
+    stampsPy(on, { 'fix it': ENDED - 60 * MIN }, null, { '65000': ENDED - 10 * MIN })
+    await $.session.start({ cwd: '.', surface: 'terminal', isInteractive: true })
+    const ui = await $.ui.mount({
+      plugin: PLUGIN,
+      surface: 'terminal',
+      component: 'TurnDuration',
+      props: { word: 'Baked', durationMs: 65_000 },
+      viewport: { columns: 60, rows: 30 },
+    })
+    expect((await ui.find({ type: 'Text' }))?.text).toMatch(/ 08:55 AM ──$/)
   })
 
   test("after a resume, the cache clock starts at the transcript's last turn", async ($, on) => {
