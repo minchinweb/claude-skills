@@ -9,9 +9,9 @@ text that the transcript holds, and the time of its last assistant message, whic
 when the last turn ended.
 """
 
+from datetime import datetime
 import json
 import sys
-from datetime import datetime
 
 
 def norm(text):
@@ -27,7 +27,11 @@ def text_of(content):
     if isinstance(content, str):
         return content
     if isinstance(content, list):
-        return "\n\n".join(b.get("text", "") for b in content if isinstance(b, dict) and b.get("type") == "text")
+        return "\n\n".join(
+            b.get("text", "")
+            for b in content
+            if isinstance(b, dict) and b.get("type") == "text"
+        )
     return ""
 
 
@@ -69,7 +73,9 @@ def read_stamps(path):
 
 
 def main():
-    texts = {norm(t) for t in json.load(sys.stdin).get("texts", []) if isinstance(t, str)}
+    texts = {
+        norm(t) for t in json.load(sys.stdin).get("texts", []) if isinstance(t, str)
+    }
     stamps, last = read_stamps(sys.argv[1])
     found = {t: stamps[t] for t in texts if t in stamps}
     json.dump({"stamps": found, "last": last}, sys.stdout)

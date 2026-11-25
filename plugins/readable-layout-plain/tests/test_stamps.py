@@ -15,7 +15,12 @@ ANSWER = "Both are done.\n\n- **Agent Monitor** is pushed"
 
 
 def line(kind, stamp, content, message_id=None):
-    entry = {"type": kind, "timestamp": stamp, "uuid": stamp, "message": {"role": kind, "content": content}}
+    entry = {
+        "type": kind,
+        "timestamp": stamp,
+        "uuid": stamp,
+        "message": {"role": kind, "content": content},
+    }
     if message_id:
         entry["message"]["id"] = message_id
     return json.dumps(entry)
@@ -35,25 +40,50 @@ class ReadStamps(unittest.TestCase):
         self.assertEqual(found[PROMPT], stamps.epoch_ms("2026-11-25T15:51:27.786Z"))
 
     def test_answer_split_over_lines_is_joined_and_stamped_with_its_last_line(self):
-        path = self.write([
-            line("assistant", "2026-11-25T15:52:00.000Z", [{"type": "text", "text": "Both are done."}], "m1"),
-            line("assistant", "2026-11-25T15:52:05.000Z", [{"type": "text", "text": "- **Agent Monitor** is pushed"}], "m1"),
-        ])
+        path = self.write(
+            [
+                line(
+                    "assistant",
+                    "2026-11-25T15:52:00.000Z",
+                    [{"type": "text", "text": "Both are done."}],
+                    "m1",
+                ),
+                line(
+                    "assistant",
+                    "2026-11-25T15:52:05.000Z",
+                    [{"type": "text", "text": "- **Agent Monitor** is pushed"}],
+                    "m1",
+                ),
+            ]
+        )
         found, last = stamps.read_stamps(path)
         self.assertEqual(found[ANSWER], stamps.epoch_ms("2026-11-25T15:52:05.000Z"))
         self.assertEqual(last, stamps.epoch_ms("2026-11-25T15:52:05.000Z"))
 
     def test_last_is_the_last_assistant_message_not_a_tool_result(self):
-        path = self.write([
-            line("user", "2026-11-25T15:51:00.000Z", PROMPT),
-            line("assistant", "2026-11-25T15:51:30.000Z", [{"type": "text", "text": "Reading."}], "m1"),
-            line("user", "2026-11-25T15:51:40.000Z", [{"type": "tool_result", "content": "ok"}]),
-        ])
+        path = self.write(
+            [
+                line("user", "2026-11-25T15:51:00.000Z", PROMPT),
+                line(
+                    "assistant",
+                    "2026-11-25T15:51:30.000Z",
+                    [{"type": "text", "text": "Reading."}],
+                    "m1",
+                ),
+                line(
+                    "user",
+                    "2026-11-25T15:51:40.000Z",
+                    [{"type": "tool_result", "content": "ok"}],
+                ),
+            ]
+        )
         _, last = stamps.read_stamps(path)
         self.assertEqual(last, stamps.epoch_ms("2026-11-25T15:51:30.000Z"))
 
     def test_lines_that_are_not_json_are_skipped(self):
-        path = self.write(["not json", line("user", "2026-11-25T15:51:27.786Z", PROMPT)])
+        path = self.write(
+            ["not json", line("user", "2026-11-25T15:51:27.786Z", PROMPT)]
+        )
         found, _ = stamps.read_stamps(path)
         self.assertIn(PROMPT, found)
 
@@ -71,9 +101,18 @@ class Command(unittest.TestCase):
         request = json.dumps({"texts": [PROMPT, "never sent"]})
         out = subprocess.run(
             [sys.executable, os.path.join(HOOKS, "stamps.py"), path],
-            input=request, capture_output=True, text=True, check=True,
+            input=request,
+            capture_output=True,
+            text=True,
+            check=True,
         )
-        self.assertEqual(json.loads(out.stdout), {"stamps": {PROMPT: stamps.epoch_ms("2026-11-25T15:51:27.786Z")}, "last": None})
+        self.assertEqual(
+            json.loads(out.stdout),
+            {
+                "stamps": {PROMPT: stamps.epoch_ms("2026-11-25T15:51:27.786Z")},
+                "last": None,
+            },
+        )
 
 
 if __name__ == "__main__":
